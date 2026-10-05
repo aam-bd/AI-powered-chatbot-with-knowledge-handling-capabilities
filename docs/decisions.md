@@ -45,3 +45,18 @@ This document records key architectural and design decisions made throughout dev
 - **Rationale:** Ensures consistent API contract for frontend/clients and defends against credential stuffing and brute-force attacks.
 - **Traceability:** Architecture §8, §9.3.
 
+---
+
+## 2026-10-05: Phase 1.5 - LLM Provider Layer
+
+### D-008: Provider-Agnostic LLM Abstraction with Normalized Errors and Role Overrides
+- **Decision:** Implement `app/services/llm/` with `OpenAICompatAdapter` and `AnthropicAdapter` under an abstract `LLMAdapter` interface, normalizing all provider exceptions to `LLMAuthError`, `LLMRateLimitError`, `LLMTimeoutError`, and `LLMUnavailableError`. System prompts are placed according to provider expectations (prepended to messages for OpenAI-compatible, top-level `system` parameter for Anthropic). Exponential backoff retries (1s, 2s) are handled explicitly up to `LLM_MAX_RETRIES`.
+- **Rationale:** Decouples core business logic (intent router and RAG engine) from vendor-specific SDK quirks and enables zero-code provider switching via configuration.
+- **Traceability:** Architecture §6.9, §12.
+
+### D-009: Google AI Studio Free Tier Model Selection
+- **Decision:** Selected `gemini-3.1-flash-lite` as the active model for Google AI Studio Free Tier OpenAI-compatible endpoint.
+- **Rationale:** Live API probes against the Google AI Studio Free Tier API key verified that legacy models (`gemini-2.0-flash`, `gemini-1.5-flash`) are retired on modern endpoints, while `gemini-3.8-flash` experiences transient capacity spikes (HTTP 503). `gemini-3.1-flash-lite` provides rapid token generation, low latency, and zero capacity throttle errors under free tier rate limits.
+- **Traceability:** Architecture §6.9, §12.
+
+

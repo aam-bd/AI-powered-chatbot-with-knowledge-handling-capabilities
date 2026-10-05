@@ -6,7 +6,7 @@ from app.core.config import Settings
 
 def test_default_settings_instantiation():
     """Verify that default settings instantiate without errors."""
-    cfg = Settings()
+    cfg = Settings(_env_file=None)
     assert cfg.CHUNK_SIZE_TOKENS == 650
     assert cfg.CHUNK_OVERLAP_TOKENS == 80
     assert cfg.RETRIEVAL_TOP_K == 15

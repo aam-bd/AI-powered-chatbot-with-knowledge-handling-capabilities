@@ -2,14 +2,14 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 1.5 (LLM provider layer)
-- Last completed task: Prompt 1: Database and authentication
-- Next task: Prompt 1.5: LLM provider layer
+- Current phase: 2 (Embeddings, ingestion and document lifecycle)
+- Last completed task: Prompt 1.5: LLM provider layer
+- Next task: Prompt 2: Embeddings, ingestion and document lifecycle
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
 - [x] 1 DB models, migrations, auth, rate limiting
-- [ ] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
+- [x] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
 - [ ] 2 Embeddings, parsers, ingestion, document lifecycle
 - [ ] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [ ] 4 Router, memory, generation, citations, SSE chat
@@ -22,15 +22,44 @@ C1 [ ]  C2 [ ]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
 G5 [ ]  G6 [x]  G7 [x]  S1 [ ]  S2 [x]  S3 [ ]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
+- 2026-10-05: Added `openai>=1.14.0` and `anthropic>=0.18.0` to `requirements.txt` for provider adapters.
 - 2026-10-05: Added `pyjwt[crypto]>=2.8.0`, `argon2-cffi>=23.1.0`, and `email-validator>=2.0.0` to `requirements.txt` for Argon2 hashing, JWT access/refresh token cryptography, and email validation.
 - 2026-10-05: Configured `NullPool` for SQLAlchemy async engine in test fixtures to prevent cross-event-loop task binding during synchronous `TestClient` executions.
 - 2026-10-05: Added `greenlet>=3.0.0` to `requirements.txt` to support SQLAlchemy 2 async engine with `asyncpg`.
 - 2026-10-05: Used bash `/dev/tcp` TCP handshake check for Qdrant healthcheck in `docker-compose.yml` because the official `qdrant/qdrant:v1.9.0` image does not bundle `curl`.
 
 ## Known issues / TODO
-- None from Phase 1.
+- None from Phase 1.5.
 
 ## Session log (newest first)
+### 2026-10-05, Phase 1.5 (LLM Provider Layer)
+- Done:
+  - Added `openai>=1.14.0` and `anthropic>=0.18.0` to `backend/requirements.txt` and installed in container stack.
+  - Implemented `app/services/llm/base.py` with abstract `LLMAdapter` interface (`complete`, `stream`), normalized exceptions (`LLMError`, `LLMAuthError`, `LLMRateLimitError`, `LLMTimeoutError`, `LLMUnavailableError`), `validate_base_url` (enforcing HTTPS on remote hosts, normalizing trailing slashes), and `mask_api_key`.
+  - Implemented `app/services/llm/openai_compat.py` with `OpenAICompatAdapter` using `openai.AsyncOpenAI`, prepending system prompt to messages, handling exponential backoff on 429 and 5xx (up to `LLM_MAX_RETRIES`), token streaming, and API key masking.
+  - Implemented `app/services/llm/anthropic.py` with `AnthropicAdapter` using `anthropic.AsyncAnthropic`, passing system prompt via native `system` parameter, exponential backoff retries on 429 and 5xx, token streaming, and API key masking.
+  - Implemented `app/services/llm/factory.py` with `get_llm_adapter(role)` supporting `router` and `answer` roles, falling back from `FAST_LLM_*` and `ANSWER_LLM_*` to shared `LLM_*` settings, and validating credential/model presence.
+  - Implemented `scripts/llm_check.py` sending minimal test prompts to both roles and printing provider, model, and latency without leaking keys.
+  - Updated `.env.example` and created `.env` configured for Google AI Studio Free Tier (`gemini-3.1-flash-lite`).
+  - Implemented comprehensive mocked HTTP unit tests in `tests/test_llm_adapters.py` covering system prompt placement, streaming, error mapping, backoff retries, base URL validation, and key masking.
+- Tests run and results:
+  - `docker compose exec api pytest tests/ -v`: All 29 tests passed (12 LLM adapter tests, 8 auth tests, 5 config tests, 4 health tests).
+  - `docker compose exec api python -m scripts.llm_check`: Both `router` and `answer` roles verified successfully against live Google AI Studio Free Tier endpoint (`gemini-3.1-flash-lite`, ~2.1-5.4s latency).
+  - `curl http://localhost:8000/api/v1/health`: Returns HTTP 200 with `"llm_configured": true` without invoking paid calls.
+- Files changed:
+  - `backend/requirements.txt`
+  - `backend/app/services/llm/base.py`
+  - `backend/app/services/llm/openai_compat.py`
+  - `backend/app/services/llm/anthropic.py`
+  - `backend/app/services/llm/factory.py`
+  - `backend/scripts/llm_check.py`
+  - `backend/tests/test_llm_adapters.py`
+  - `backend/tests/test_config.py`
+  - `.env.example`
+  - `.env`
+  - `docs/decisions.md`
+  - `docs/progress.md`
 ### 2026-10-05, Phase 1 (Database and Authentication)
 - Done:
   - Implemented SQLAlchemy 2 database models in `app/models/sql_models.py` (`User`, `Document` with partial unique index on `sha256` where `status != 'deleting'`, `QueryLog`).
