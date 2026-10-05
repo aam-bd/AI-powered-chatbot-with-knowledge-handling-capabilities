@@ -44,10 +44,10 @@ A chatbot that answers questions **only** from a custom, medium-size knowledge b
 | Workers | Celery with Redis broker | Ingestion, deletion, reconciliation |
 | Relational DB | PostgreSQL, SQLAlchemy 2, Alembic | Source of truth for users, documents, logs |
 | Vector DB | Qdrant (Docker) | One collection, named vectors `dense` and `sparse` |
-| Dense embeddings | BGE-m3 (local) behind an interface | Alternative: a hosted embedding API. Keep the interface swappable |
+| Dense embeddings | BGE-m3 (local) by default, or any OpenAI-compatible `/embeddings` endpoint | Configured separately from the chat LLM (§12). Changing model or dimension requires re-indexing (§4.2) |
 | Sparse embeddings | BM25 via `fastembed` | Exact-term matching for acronyms, IDs, codes |
 | Reranker | `BAAI/bge-reranker-v2-m3` (local) | Cross-encoder. Check CPU latency on 15 chunks |
-| LLMs | Two configured models: `FAST_MODEL`, `ANSWER_MODEL` | Accessed only through `app/services/llm.py`. Default provider: Gemini (`google-genai` SDK) |
+| LLMs | Provider-agnostic: any OpenAI-compatible endpoint (OpenAI, OpenRouter, Gemini's OpenAI-compatible endpoint, Ollama, vLLM and others) plus native Anthropic | Set by API key, base URL and model names (§6.9, §12). Accessed only through `app/services/llm/` |
 | Cache, sessions, broker | Redis | Chat history, rate limits, Celery broker |
 | Logging | Loguru (JSON) | Request ID on every log line |
 | Testing | pytest, Qdrant/Redis/Postgres test containers | LLM mocked in unit tests |
@@ -81,7 +81,7 @@ A chatbot that answers questions **only** from a custom, medium-size knowledge b
                     │ ingest · update · delete · reconcile│
                     └────────────────────────────────────┘
 
-        LLM provider (external API)  ◄── only via app/services/llm.py
+        LLM provider (external API)  ◄── only via app/services/llm/
 ```
 
 ### 3.1 Component responsibilities
@@ -140,6 +140,7 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 | `text` | Chunk text |
 
 - **Payload indexes:** `document_id` (keyword), `is_active` (bool).
+- **Embedding guard:** the collection records the embedding model name and dimension. At startup the app refuses to run, and ingestion refuses to write, if `EMBEDDING_MODEL` or `EMBEDDING_DIM` differs from the collection. Changing the embedding model requires `scripts/reindex.py`, which re-embeds every active document from its stored source file.
 
 ### 4.3 Redis keys
 
@@ -352,6 +353,39 @@ Transport: HTTP response with `Content-Type: text/event-stream`, consumed by `fe
 | `error` | `{ "message": "...", "code": "..." }` | Recoverable failure |
 | `done` | `{ "intent": "...", "fallback_layer": null }` | Stream finished |
 
+### 6.9 LLM provider layer
+
+Goal: the operator supplies an API key, a base URL and model names, and can switch providers without code changes.
+
+**Adapters** in `app/services/llm/`: `base.py` (interface and error types), `openai_compat.py` (OpenAI SDK with a custom `base_url`), `anthropic.py` (native Messages API), `factory.py` (builds an adapter from config, per role).
+
+**Presets** (verify against each provider's documentation; URLs and model names change):
+
+| Provider | `LLM_PROVIDER` | `LLM_BASE_URL` |
+|---|---|---|
+| OpenAI | `openai_compatible` | `https://api.openai.com/v1` |
+| OpenRouter | `openai_compatible` | `https://openrouter.ai/api/v1` |
+| Google Gemini (OpenAI-compatible endpoint) | `openai_compatible` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| Anthropic (native) | `anthropic` | `https://api.anthropic.com` |
+| Ollama, vLLM, LM Studio, other | `openai_compatible` | the server's `/v1` URL |
+
+**Interface** (the only thing business logic may call):
+
+- `complete(system, messages, model, max_tokens, temperature) -> str`
+- `stream(system, messages, model, max_tokens, temperature) -> AsyncIterator[str]`
+
+Callers pass `system` separately; each adapter places it where its API expects it (a system message, or Anthropic's `system` parameter).
+
+**Rules**
+
+- No provider-specific features in business logic. Do not depend on native JSON mode, tool calling or response prefill. The router asks for JSON in the prompt and validates it with Pydantic (§6.2), retries once, then fails open.
+- Errors are normalized to `LLMAuthError`, `LLMRateLimitError`, `LLMTimeoutError` and `LLMUnavailableError`, and handled as in §16.
+- Retries use exponential backoff on 429 and 5xx. Timeout and retry counts come from config.
+- Base URL validation: `https` required except for localhost and private hosts; trailing slashes normalized.
+- Keys come only from environment variables, are masked in logs and never returned by any endpoint. `/health` reports whether an LLM is configured; it does not make a paid call on every request.
+- Model behaviour differs. Sentinel and citation compliance depend on the model, so re-run `eval/run_eval.py` after changing provider or `ANSWER_MODEL`. Layers 1 and 3 protect against models that ignore the sentinel.
+- Embeddings are configured independently (§12). As of writing, Anthropic does not provide an embeddings endpoint, so use local embeddings or another provider's endpoint for them.
+
 ---
 
 ## 7. Conversation Memory
@@ -419,7 +453,7 @@ Redis-backed rate limits, stricter on `/auth/login` and `/chat/stream`. CORS res
 
 ### 9.6 Secrets
 
-Everything via environment variables. `.env` is git-ignored and `.env.example` is maintained. Never log passwords, tokens or API keys.
+Everything via environment variables. `.env` is git-ignored and `.env.example` is maintained. Never log passwords, tokens or API keys (including LLM and embedding keys), and never return them from any endpoint.
 
 ---
 
@@ -454,10 +488,18 @@ All values come from environment variables with sensible defaults. Nothing below
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `FAST_MODEL` | (set per provider) | Router and rewrite model |
-| `ANSWER_MODEL` | (set per provider) | Answer generation model |
-| `LLM_PROVIDER` | `gemini` | Provider adapter |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | Dense embeddings |
+| `LLM_PROVIDER` | `openai_compatible` | Adapter type: `openai_compatible` or `anthropic` |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | Provider endpoint (presets in §6.9) |
+| `LLM_API_KEY` | (required) | Secret. Never logged or returned by any endpoint |
+| `FAST_MODEL` | (required) | Router and rewrite model name |
+| `ANSWER_MODEL` | (required) | Answer generation model name |
+| `FAST_LLM_*`, `ANSWER_LLM_*` | (unset) | Optional per-role overrides of `PROVIDER`, `BASE_URL` and `API_KEY` |
+| `LLM_TIMEOUT_SECONDS` | 60 | Request timeout |
+| `LLM_MAX_RETRIES` | 2 | Retries on 429 and 5xx with backoff |
+| `EMBEDDING_PROVIDER` | `local` | `local` or `openai_compatible` |
+| `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` | (unset) | Only for `openai_compatible` embeddings |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | Dense embedding model |
+| `EMBEDDING_DIM` | per model | Must match the Qdrant collection |
 | `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder |
 | `CHUNK_SIZE_TOKENS` | 650 | Chunk size |
 | `CHUNK_OVERLAP_TOKENS` | 80 | Chunk overlap |
@@ -516,6 +558,7 @@ Fifty questions give a rough estimate with wide error margins. Report actual cou
 | `test_rag_pipeline.py` | With a mocked LLM: greeting, clarify, follow-up rewrite, Layer 1, Layer 2, Layer 3 retract, hallucinated citation tag removed |
 | `test_ssrf.py` | Private IPs, redirects to private IPs, oversized responses, non-allowlisted domains |
 | `test_sessions.py` | Ownership, TTL, history cap, clear session |
+| `test_llm_adapters.py` | Both adapters against mocked HTTP: system prompt placement, streaming, error mapping, retries, base URL validation, key never logged |
 
 ---
 
@@ -549,7 +592,11 @@ ai-chatbot-project/
 │   │   │   └── migrations/            # Alembic
 │   │   ├── models/ (sql_models.py, schemas.py)
 │   │   ├── services/
-│   │   │   ├── llm.py                 # provider interface
+│   │   │   ├── llm/                   # provider layer (§6.9)
+│   │   │   │   ├── base.py
+│   │   │   │   ├── openai_compat.py
+│   │   │   │   ├── anthropic.py
+│   │   │   │   └── factory.py
 │   │   │   ├── intent_router.py
 │   │   │   ├── rag_engine.py
 │   │   │   ├── citation_service.py
@@ -561,7 +608,7 @@ ai-chatbot-project/
 │   │   │   ├── tasks_deletion.py
 │   │   │   └── tasks_reconcile.py
 │   │   └── main.py
-│   ├── scripts/ (seed_admin.py, search.py)
+│   ├── scripts/ (seed_admin.py, search.py, reindex.py)
 │   ├── tests/
 │   ├── eval/ (calibration_set.json, test_set.json, calibrate_threshold.py, run_eval.py)
 │   ├── requirements.txt
@@ -583,7 +630,9 @@ ai-chatbot-project/
 
 | Failure | Behaviour |
 |---|---|
-| LLM timeout or error | Retry once with backoff, then send an `error` event with the system error message |
+| LLM timeout or error | Retry with backoff (`LLM_MAX_RETRIES`), then send an `error` event with the system error message |
+| Invalid or missing LLM key | `error` event with the system error message; `/health` flags the LLM as misconfigured; details logged without the key |
+| Provider rate limit (429) | Retry with backoff, then an `error` event suggesting a retry |
 | Router output invalid | Fail open to `SEARCH` with the raw query |
 | Qdrant unavailable | `503` with a friendly message; `/health` shows the failure |
 | Redis unavailable | Chat continues without memory; rate limiting falls back to a conservative in-process limit; logged |
