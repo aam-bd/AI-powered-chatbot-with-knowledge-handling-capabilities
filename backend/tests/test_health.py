@@ -17,6 +17,10 @@ def test_health_endpoint_structure(client: TestClient):
     assert "qdrant" in data
     assert "llm_configured" in data
     assert isinstance(data["llm_configured"], bool)
+    assert "embedding_model" in data
+    assert "embedding_status" in data
+    assert "reranker_model" in data
+    assert "reranker_status" in data
     assert data["version"] == "1.0.0"
 
 

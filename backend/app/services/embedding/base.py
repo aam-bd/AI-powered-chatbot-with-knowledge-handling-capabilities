@@ -26,7 +26,15 @@ class EmbeddingService(ABC):
         """Alias for embed_dense."""
         return self.embed_dense(texts)
 
+    def embed_query(self, query: str) -> List[float]:
+        """Compute dense vector representation for a single query string."""
+        return self.embed_dense([query])[0]
+
     @abstractmethod
     def embed_sparse(self, texts: List[str]) -> List[SparseVector]:
         """Compute sparse BM25 vector representations for a batch of texts."""
         pass
+
+    def embed_sparse_query(self, query: str) -> SparseVector:
+        """Compute sparse BM25 vector representation for a single query string."""
+        return self.embed_sparse([query])[0]

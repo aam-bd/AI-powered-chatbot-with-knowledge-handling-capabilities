@@ -11,6 +11,8 @@ from app.db.session import check_postgres_health
 from app.db.redis import check_redis_health
 from app.db.qdrant import check_qdrant_health
 
+from app.services.rag_engine import CrossEncoderSingleton
+
 router = APIRouter(tags=["health"])
 
 
@@ -20,12 +22,16 @@ class HealthResponse(BaseModel):
     redis: str
     qdrant: str
     llm_configured: bool
+    embedding_model: str
+    embedding_status: str
+    reranker_model: str
+    reranker_status: str
     version: str = "1.0.0"
 
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
-    """Evaluate connectivity to critical services and check LLM configuration status."""
+    """Evaluate connectivity to critical services and check model configuration status."""
     pg_task = asyncio.create_task(check_postgres_health())
     redis_task = asyncio.create_task(check_redis_health())
     qdrant_task = asyncio.create_task(check_qdrant_health())
@@ -39,11 +45,17 @@ async def health_check() -> HealthResponse:
     all_healthy = pg_healthy and redis_healthy and qdrant_healthy
     status = "healthy" if all_healthy else "degraded"
 
+    reranker_status = "ready" if CrossEncoderSingleton.is_loaded() else "configured"
+
     return HealthResponse(
         status=status,
         postgres="healthy" if pg_healthy else "unhealthy",
         redis="healthy" if redis_healthy else "unhealthy",
         qdrant="healthy" if qdrant_healthy else "unhealthy",
         llm_configured=settings.is_llm_configured(),
+        embedding_model=settings.EMBEDDING_MODEL,
+        embedding_status="ready",
+        reranker_model=settings.RERANKER_MODEL,
+        reranker_status=reranker_status,
         version="1.0.0",
     )

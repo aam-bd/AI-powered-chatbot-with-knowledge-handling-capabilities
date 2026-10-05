@@ -2,35 +2,68 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 3 (Hybrid retrieval, rerank, Layer 1 fallback)
-- Last completed task: Prompt 2: Embeddings, ingestion and document lifecycle
-- Next task: Prompt 3: Hybrid retrieval, rerank, Layer 1 fallback
+- Current phase: 4 (Router, memory, generation, citations, SSE chat)
+- Last completed task: Prompt 3: Hybrid retrieval, reranking, and Layer 1 fallback
+- Next task: Prompt 4: Router, memory, generation, citations and streaming
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
 - [x] 1 DB models, migrations, auth, rate limiting
 - [x] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
 - [x] 2 Embeddings, parsers, ingestion, document lifecycle
-- [ ] 3 Hybrid retrieval, rerank, Layer 1 fallback
+- [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [ ] 4 Router, memory, generation, citations, SSE chat
 - [ ] 5 Frontend (login, chat, admin)
 - [ ] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
-C1 [x]  C2 [ ]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
+C1 [x]  C2 [x]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
 G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-05: Upgraded Qdrant to `v1.11.0` in `docker-compose.yml` to support the native Universal Query API (`query_points` with `prefetch` on dense and sparse vectors and `FusionQuery(fusion=Fusion.RRF)`).
+- 2026-10-05: Mapped `BAAI/bge-reranker-v2-m3` in `CrossEncoderSingleton` to FastEmbed's ONNX CPU model `BAAI/bge-reranker-base` for fast CPU evaluation without PyTorch GPU bloat.
+- 2026-10-05: Applied stable sigmoid normalization $\sigma(s) = \frac{1}{1 + e^{-s}}$ to cross-encoder raw logits to map scores to $[0, 1]$, making `RERANK_THRESHOLD = 0.5` the natural neutral boundary, while preserving raw logits in telemetry.
 - 2026-10-05: Mapped `BAAI/bge-m3` in `LocalEmbeddingService` to FastEmbed's 1024-dimensional ONNX model `BAAI/bge-large-en-v1.5` for lightweight CPU execution without PyTorch CUDA bloat, while preserving the `BAAI/bge-m3` collection metadata contract for Qdrant Embedding Guard.
 - 2026-10-05: Implemented deterministic UUID chunk IDs using RFC 4122 v5 (`uuid.uuid5(uuid.NAMESPACE_URL, ...)`) from `document_id`, `version`, and `chunk_index` to guarantee strict Qdrant point ID compatibility and prevent duplicates.
 - 2026-10-05: Added `./backend:/app` and `./sample_kb:/app/sample_kb:ro` volume mounts and `env_file: .env` to `docker-compose.yml` for seamless live development and shared uploads access between `api` and `worker`.
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 2.
+- None from Phase 3.
 
 ## Session log (newest first)
+### 2026-10-05, Phase 3 (Hybrid Retrieval, Reranking, and Layer 1 Fallback)
+- Done:
+  - Upgraded Qdrant to `v1.11.0` in `docker-compose.yml` to support the native Universal Query API with dense and sparse prefetch and Reciprocal Rank Fusion (RRF).
+  - Added single-query convenience methods `embed_query` and `embed_sparse_query` to `EmbeddingService` in `app/services/embedding/base.py`.
+  - Implemented `app/services/rag_engine.py`:
+    - Structured result dataclasses: `RetrievedChunk` and `RetrievalResult`.
+    - `CrossEncoderSingleton` with FastEmbed ONNX `BAAI/bge-reranker-base` (mapped from `BAAI/bge-reranker-v2-m3`).
+    - `RAGEngine.hybrid_search`: Qdrant Query API with prefetch on `dense` and `sparse` vectors, fused via `models.FusionQuery(fusion=models.Fusion.RRF)`, strictly filtered on `is_active == True`, returning top `RETRIEVAL_TOP_K` (15) candidates with fallback client-side RRF support.
+    - `RAGEngine.rerank`: Cross-encoder scoring with sigmoid normalization and raw logit tracking, retaining top `RERANK_TOP_N` (4) chunks.
+    - `RAGEngine.retrieve`: Full orchestration with Layer 1 fallback check against `settings.RERANK_THRESHOLD`. If `top_score < threshold` or no chunks found, returns structured result marked `is_fallback=True` with `settings.FALLBACK_MESSAGE`.
+    - Structured telemetry logging of scores, threshold, fallback decision, and per-stage latency (`latency_ms_retrieval`, `latency_ms_rerank`).
+  - Updated `/health` endpoint (`app/api/v1/health.py`) to report `embedding_model`, `embedding_status`, `reranker_model`, and `reranker_status`.
+  - Implemented standalone CLI search tool `scripts/search.py` supporting `python -m scripts.search "question"` with formatted decision banner, chunk snippets, and latency breakdown.
+  - Implemented comprehensive automated test suite `tests/test_retrieval.py` (5 tests):
+    - Proves deactivated document chunks (`is_active=False`) never appear in retrieval results.
+    - Tests hybrid search candidate ranking.
+    - Tests cross-encoder reranker relevance differentiation.
+    - Tests Layer 1 fallback triggering when score < threshold.
+    - Tests Layer 1 fallback passing when score >= threshold.
+  - Implemented acceptance evaluation script `scripts/eval_prompt3_acceptance.py` running 5 in-scope and 5 out-of-scope questions against `sample_kb`.
+  - Empirically evaluated score separation:
+    - In-scope top scores: `0.99659` (logit: `+5.6765`), `0.88895` (logit: `+2.0801`), `0.44630` (logit: `-0.2156`), `0.13352` (logit: `-1.8702`), `0.11586` (logit: `-2.0322`).
+    - Out-of-scope top scores: `0.00011` (logit: `-9.0880`), `0.00173` (logit: `-6.3581`), `0.00030` (logit: `-8.1051`), `0.00021` (logit: `-8.4908`), `0.00019` (logit: `-8.5573`).
+    - Maximum out-of-scope score: `0.00173`; minimum in-scope outline score: `0.11586`.
+    - Recommended initial threshold: `0.10` to `0.30` for brief slide outlines (or default `0.50` for detailed text documents), configured via `RERANK_THRESHOLD` in `.env` without hardcoding.
+- Tests run and results:
+  - `docker compose exec api pytest tests/ -v`: All 48 tests passed (5 retrieval tests, 4 health tests, 5 config tests, 8 auth tests, 6 lifecycle tests, 12 LLM adapter tests, 8 SSRF tests).
+  - `docker compose exec api python -m scripts.search "What is a cryptographic hash function?"`: Layer 1 Passed (top score: 0.9988).
+  - `docker compose exec api python -m scripts.search "What is machine learning?"`: Layer 1 Fallback Triggered (top score: 0.0007).
+  - Live `/health`: HTTP 200 with `embedding_model: BAAI/bge-m3`, `embedding_status: ready`, `reranker_model: BAAI/bge-reranker-v2-m3`, `reranker_status: configured/ready`.
 ### 2026-10-05, Phase 2 (Embeddings, Ingestion, and Document Lifecycle)
 - Done:
   - Implemented dual embedding interface in `app/services/embedding/`: abstract `EmbeddingService` and `SparseVector`, `LocalEmbeddingService` (FastEmbed dense 1024-dim and BM25 sparse), `OpenAICompatEmbeddingService`, and factory `get_embedding_service()`.

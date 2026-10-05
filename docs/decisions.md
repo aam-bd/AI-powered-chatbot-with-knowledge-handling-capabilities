@@ -81,6 +81,23 @@ This document records key architectural and design decisions made throughout dev
 ### D-013: Deterministic UUIDv5 Point IDs and Two-Phase Deletion Lifecycle
 - **Decision:** Generate deterministic RFC 4122 UUID v5 point IDs using `uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:{version}:{chunk_index}")`. Deletion is implemented in two phases: Phase 1 (synchronous HTTP DELETE) marks the document `status='deleting'` and immediately flips Qdrant `is_active=False` so it disappears instantly from all queries; Phase 2 (asynchronous Celery worker task) purges all vector points from Qdrant, deletes the local file from storage, and removes the PostgreSQL document record.
 - **Rationale:** Ensures strict Qdrant point ID compatibility, enforces task idempotency across re-runs, and provides instant query response times for user deletions.
-- **Traceability:** Architecture §4.1, §4.2, §4.3.
+---
+
+## 2026-10-05: Phase 3 - Hybrid Retrieval, Reranking, and Layer 1 Fallback
+
+### D-014: Qdrant v1.11.0 Universal Query API for Hybrid Search with Reciprocal Rank Fusion (RRF)
+- **Decision:** Upgraded Qdrant to `v1.11.0` to leverage the native Universal Query API (`query_points` with `prefetch` and `models.FusionQuery(fusion=models.Fusion.RRF)`). Prefetches top $K$ candidates for both dense vectors (1024-dim) and sparse BM25 vectors simultaneously under strict `is_active == True` boolean filtering, and fuses ranks using RRF ($k=60$). A resilient client-side RRF fallback is also retained in code for compatibility.
+- **Rationale:** Minimizes network round trips by executing dense search, sparse keyword search, payload filtering, and rank fusion within a single declarative database query.
+- **Traceability:** Architecture §6.3, Prompt 3.
+
+### D-015: Singleton Cross-Encoder Reranking with FastEmbed ONNX
+- **Decision:** Load the cross-encoder model once as a thread-safe singleton (`CrossEncoderSingleton`). Map `settings.RERANKER_MODEL` (`BAAI/bge-reranker-v2-m3`) to FastEmbed's ONNX model `BAAI/bge-reranker-base`. Rerank hybrid candidates and retain top `RERANK_TOP_N` (default 4) for prompt context assembly.
+- **Rationale:** Avoids re-initializing heavy ONNX sessions per query while preserving high semantic ranking quality without PyTorch GPU dependencies.
+- **Traceability:** Architecture §6.4, Prompt 3.
+
+### D-016: Sigmoid-Normalized Scoring with Raw Logit Telemetry and Layer 1 Fallback Gating
+- **Decision:** Apply stable sigmoid normalization $\sigma(s) = \frac{1}{1 + e^{-s}}$ to cross-encoder raw logits to yield scores in $[0, 1]$, where neutral relevance ($s = 0$) maps cleanly to $0.5$, matching `settings.RERANK_THRESHOLD = 0.5`. Both the normalized score and raw logit are tracked in telemetry. If the top score is below `RERANK_THRESHOLD` or no candidates are retrieved, Layer 1 immediately halts the pipeline and returns a structured fallback response.
+- **Rationale:** Prevents ungrounded hallucination early in the pipeline without spending expensive generation tokens on queries outside the knowledge base.
+- **Traceability:** Architecture §6.4, §6.7, Prompt 3.
 
 
