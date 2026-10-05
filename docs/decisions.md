@@ -25,3 +25,23 @@ This document records key architectural and design decisions made throughout dev
 - **Decision:** `GET /api/v1/health` checks PostgreSQL, Redis, and Qdrant connectivity and reports whether LLM is configured without making outbound paid LLM calls.
 - **Rationale:** Avoids ongoing costs, external latency, and false degradation during third-party provider outages while preserving accurate dependency telemetry.
 - **Traceability:** Architecture §8, §10.
+
+---
+
+## 2026-10-05: Phase 1 - Database and Authentication
+
+### D-005: Argon2 Password Hashing & Strict Role-Based RBAC
+- **Decision:** Use Argon2 (`argon2-cffi`) for all user password hashing, and hardcode `role = "user"` during self-registration (`POST /auth/register`).
+- **Rationale:** Protects against GPU cracking attacks. Strictly prevents privilege escalation attacks by requiring administrative accounts to be seeded via CLI script or environment variables.
+- **Traceability:** Architecture §9.1, §9.4.
+
+### D-006: Partial Unique Index on Document SHA-256
+- **Decision:** Define partial unique index `ix_documents_sha256_active` on `documents(sha256)` WHERE `status != 'deleting'`.
+- **Rationale:** Prevents duplicate ingestion of identical files among active/pending documents while permitting clean re-ingestion after a document is marked for deletion.
+- **Traceability:** Architecture §4.1.
+
+### D-007: Standardized Error Response Format & Redis Rate Limiting
+- **Decision:** Enforce uniform JSON error payload `{"detail": "...", "code": "..."}` across all HTTP exception handlers and apply Redis-backed sliding window rate limiting (5 req/min on `/auth/login`, 60 req/min general) with graceful in-memory fallback on Redis unavailability.
+- **Rationale:** Ensures consistent API contract for frontend/clients and defends against credential stuffing and brute-force attacks.
+- **Traceability:** Architecture §8, §9.3.
+
