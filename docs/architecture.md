@@ -438,7 +438,7 @@ Extension allowlist, magic-byte verification, size limit (default 20 MB), random
 
 ### 9.3 SSRF protection for URL ingestion
 
-- Domain allowlist from config.
+- Domain allowlist from config (an empty list disables URL ingestion).
 - Block private, loopback and link-local addresses after DNS resolution.
 - Re-validate on **every redirect**; limit redirect count.
 - Short timeouts and a maximum response size.
@@ -509,7 +509,8 @@ All values come from environment variables with sensible defaults. Nothing below
 | `HISTORY_MESSAGES` | 6 | Memory window |
 | `SESSION_TTL_HOURS` | 24 | Sliding TTL |
 | `MAX_UPLOAD_MB` | 20 | Upload limit |
-| `ALLOWED_URL_DOMAINS` | (empty) | SSRF allowlist |
+| `ALLOWED_URL_DOMAINS` | (empty) | SSRF allowlist. Empty means URL ingestion is disabled |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | (unset) | Optional: seed the first admin at startup |
 | `ENABLE_OCR` | false | Optional OCR |
 | `RECONCILE_STALE_MINUTES` | 15 | Heartbeat staleness |
 | `ACCESS_TOKEN_MINUTES` | 30 | JWT lifetime |
@@ -618,7 +619,7 @@ ai-chatbot-project/
 ├── docs/
 │   ├── architecture.md                # this file
 │   └── decisions.md                   # short log of design decisions
-├── docker-compose.yml                 # api, worker, frontend, postgres, redis, qdrant
+├── docker-compose.yml                 # api, worker, beat, frontend, postgres, redis, qdrant
 ├── Makefile
 ├── .env.example
 └── README.md
@@ -644,7 +645,7 @@ ai-chatbot-project/
 
 ## 17. Deployment (Docker Compose)
 
-Services: `api`, `worker`, `frontend`, `postgres`, `redis`, `qdrant`. Persistent volumes for PostgreSQL, Qdrant and uploaded files. Health checks on every service. Local embedding and reranker models are downloaded once and cached in a volume. Provide `make up`, `make down`, `make test`, `make eval`.
+Services: `api`, `worker`, `beat` (Celery scheduler for the reconcile task; may instead run as `-B` on the worker), `frontend`, `postgres`, `redis`, `qdrant`. Persistent volumes for PostgreSQL, Qdrant and uploaded files. Health checks on every service. Local embedding and reranker models are downloaded once and cached in a volume. Provide `make up`, `make down`, `make test`, `make eval`.
 
 ---
 
