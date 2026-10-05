@@ -52,15 +52,19 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/chatbot
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - CORS_ORIGINS=["http://localhost:3000"]
     volumes:
+      - ./backend:/app
       - ./logs:/app/logs
+      - ./sample_kb:/app/sample_kb:ro
       - uploads:/app/uploads
-      - model_cache:/root/.cache/huggingface
+      - model_cache:/root/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,15 +84,18 @@ services:
       dockerfile: Dockerfile
     container_name: chatbot-worker
     restart: unless-stopped
-    command: ["python", "-m", "app.workers.celery_app"]
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "-c", "2"]
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/chatbot
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
     volumes:
+      - ./backend:/app
       - ./logs:/app/logs
       - uploads:/app/uploads
-      - model_cache:/root/.cache/huggingface
+      - model_cache:/root/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,10 +115,19 @@ services:
       dockerfile: Dockerfile
     container_name: chatbot-beat
     restart: unless-stopped
-    command: ["python", "-c", "import time; print('Celery beat placeholder'); [time.sleep(3600) for _ in iter(int, 1)]"]
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
+    env_file:
+      - .env
     environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/chatbot
       - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:

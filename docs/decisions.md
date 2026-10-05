@@ -59,4 +59,28 @@ This document records key architectural and design decisions made throughout dev
 - **Rationale:** Live API probes against the Google AI Studio Free Tier API key verified that legacy models (`gemini-2.0-flash`, `gemini-1.5-flash`) are retired on modern endpoints, while `gemini-3.8-flash` experiences transient capacity spikes (HTTP 503). `gemini-3.1-flash-lite` provides rapid token generation, low latency, and zero capacity throttle errors under free tier rate limits.
 - **Traceability:** Architecture §6.9, §12.
 
+---
+
+## 2026-10-05: Phase 2 - Embeddings, Ingestion, and Document Lifecycle
+
+### D-010: CPU-Optimized Dual Dense & BM25 Sparse Embedding via FastEmbed
+- **Decision:** Implement `LocalEmbeddingService` using FastEmbed's ONNX CPU runtime without PyTorch or CUDA dependencies. Map `BAAI/bge-m3` to FastEmbed's 1024-dimensional ONNX model `BAAI/bge-large-en-v1.5` while preserving `BAAI/bge-m3` as the collection metadata contract for Qdrant Embedding Guard. Sparse representations use `Qdrant/bm25` indices and weights.
+- **Rationale:** Eliminates gigabytes of PyTorch GPU bloat and provides fast, predictable vector generation on standard CPU server instances.
+- **Traceability:** Architecture §4.3, §4.4, §12.
+
+### D-011: Blue-Green Ingestion Cutover with Qdrant Boolean Index
+- **Decision:** During document ingestion and version updates, all new chunks are upserted into Qdrant collection `kb_chunks` with `is_active=False`. Only after the entire document has been parsed, chunked, and embedded without error does a single payload update flip `is_active=True` for the target version, followed by purging chunks of the previous version. If ingestion fails, unactivated chunks are purged and the active version remains completely unaffected.
+- **Rationale:** Guarantees search consistency (zero partial-state visibility) and zero-downtime document updates.
+- **Traceability:** Architecture §4.2, §4.5.
+
+### D-012: Comprehensive Defense-in-Depth SSRF Protection on Web Ingestion
+- **Decision:** Multi-layered defense on `parse_web_url`: enforces HTTP/HTTPS scheme, matches domain against `ALLOWED_URL_DOMAINS` allowlist, resolves DNS hostnames and verifies all resolved IP addresses are neither loopback (`127.0.0.0/8`, `::1`), private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), multicast, nor reserved. Follows redirects manually with re-validation at every hop, and enforces maximum content-length size caps and request timeouts.
+- **Rationale:** Completely eliminates Server-Side Request Forgery (SSRF) vulnerabilities against internal network services, Docker host APIs, and cloud provider metadata endpoints (e.g., AWS/GCP 169.254.169.254).
+- **Traceability:** Architecture §9.3.
+
+### D-013: Deterministic UUIDv5 Point IDs and Two-Phase Deletion Lifecycle
+- **Decision:** Generate deterministic RFC 4122 UUID v5 point IDs using `uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:{version}:{chunk_index}")`. Deletion is implemented in two phases: Phase 1 (synchronous HTTP DELETE) marks the document `status='deleting'` and immediately flips Qdrant `is_active=False` so it disappears instantly from all queries; Phase 2 (asynchronous Celery worker task) purges all vector points from Qdrant, deletes the local file from storage, and removes the PostgreSQL document record.
+- **Rationale:** Ensures strict Qdrant point ID compatibility, enforces task idempotency across re-runs, and provides instant query response times for user deletions.
+- **Traceability:** Architecture §4.1, §4.2, §4.3.
+
 

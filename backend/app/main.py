@@ -39,6 +39,13 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error(f"Failed to seed admin user on startup: {exc}")
 
+    # Initialize Qdrant collection kb_chunks and verify embedding guard
+    try:
+        from app.db.qdrant import init_qdrant_collection
+        init_qdrant_collection()
+    except Exception as exc:
+        logger.warning(f"Failed to initialize Qdrant collection on startup: {exc}")
+
     yield
     logger.info("Application shutting down.")
 

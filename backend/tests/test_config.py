@@ -4,8 +4,11 @@ from pydantic import ValidationError, SecretStr
 from app.core.config import Settings
 
 
-def test_default_settings_instantiation():
+def test_default_settings_instantiation(monkeypatch):
     """Verify that default settings instantiate without errors."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("FAST_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("ANSWER_LLM_API_KEY", raising=False)
     cfg = Settings(_env_file=None)
     assert cfg.CHUNK_SIZE_TOKENS == 650
     assert cfg.CHUNK_OVERLAP_TOKENS == 80

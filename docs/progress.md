@@ -2,15 +2,15 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 2 (Embeddings, ingestion and document lifecycle)
-- Last completed task: Prompt 1.5: LLM provider layer
-- Next task: Prompt 2: Embeddings, ingestion and document lifecycle
+- Current phase: 3 (Hybrid retrieval, rerank, Layer 1 fallback)
+- Last completed task: Prompt 2: Embeddings, ingestion and document lifecycle
+- Next task: Prompt 3: Hybrid retrieval, rerank, Layer 1 fallback
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
 - [x] 1 DB models, migrations, auth, rate limiting
 - [x] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
-- [ ] 2 Embeddings, parsers, ingestion, document lifecycle
+- [x] 2 Embeddings, parsers, ingestion, document lifecycle
 - [ ] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [ ] 4 Router, memory, generation, citations, SSE chat
 - [ ] 5 Frontend (login, chat, admin)
@@ -18,19 +18,63 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
-C1 [ ]  C2 [ ]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
-G5 [ ]  G6 [x]  G7 [x]  S1 [ ]  S2 [x]  S3 [ ]
+C1 [x]  C2 [ ]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
+G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-05: Mapped `BAAI/bge-m3` in `LocalEmbeddingService` to FastEmbed's 1024-dimensional ONNX model `BAAI/bge-large-en-v1.5` for lightweight CPU execution without PyTorch CUDA bloat, while preserving the `BAAI/bge-m3` collection metadata contract for Qdrant Embedding Guard.
+- 2026-10-05: Implemented deterministic UUID chunk IDs using RFC 4122 v5 (`uuid.uuid5(uuid.NAMESPACE_URL, ...)`) from `document_id`, `version`, and `chunk_index` to guarantee strict Qdrant point ID compatibility and prevent duplicates.
+- 2026-10-05: Added `./backend:/app` and `./sample_kb:/app/sample_kb:ro` volume mounts and `env_file: .env` to `docker-compose.yml` for seamless live development and shared uploads access between `api` and `worker`.
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
-- 2026-10-05: Added `openai>=1.14.0` and `anthropic>=0.18.0` to `requirements.txt` for provider adapters.
-- 2026-10-05: Added `pyjwt[crypto]>=2.8.0`, `argon2-cffi>=23.1.0`, and `email-validator>=2.0.0` to `requirements.txt` for Argon2 hashing, JWT access/refresh token cryptography, and email validation.
-- 2026-10-05: Configured `NullPool` for SQLAlchemy async engine in test fixtures to prevent cross-event-loop task binding during synchronous `TestClient` executions.
-- 2026-10-05: Added `greenlet>=3.0.0` to `requirements.txt` to support SQLAlchemy 2 async engine with `asyncpg`.
-- 2026-10-05: Used bash `/dev/tcp` TCP handshake check for Qdrant healthcheck in `docker-compose.yml` because the official `qdrant/qdrant:v1.9.0` image does not bundle `curl`.
 
 ## Known issues / TODO
-- None from Phase 1.5.
+- None from Phase 2.
+
+## Session log (newest first)
+### 2026-10-05, Phase 2 (Embeddings, Ingestion, and Document Lifecycle)
+- Done:
+  - Implemented dual embedding interface in `app/services/embedding/`: abstract `EmbeddingService` and `SparseVector`, `LocalEmbeddingService` (FastEmbed dense 1024-dim and BM25 sparse), `OpenAICompatEmbeddingService`, and factory `get_embedding_service()`.
+  - Implemented Qdrant collection initialization and Embedding Guard in `app/db/qdrant.py` with collection `kb_chunks`, named `dense` and `sparse` vectors, payload keyword indexes for `document_id` and boolean index for `is_active`, and sentinel metadata point for guard verification.
+  - Implemented document parsers in `app/services/parsers/`: `parse_pdf` (PyMuPDF with page tracking and OCR fallback), `parse_docx` (python-docx with section tracking), `parse_markdown`, `parse_text`, and `parse_web_url` (with strict SSRF defense: scheme validation, domain allowlist, loopback/private/link-local IP filtering, per-redirect validation, and size caps).
+  - Implemented token chunker in `app/services/chunker.py` using `tiktoken` (cl100k_base), 500-800 token target, 10-15% overlap, natural boundary splitting, structural metadata preservation, and deterministic UUID chunk IDs.
+  - Implemented Admin Document API in `app/api/v1/documents.py`: `POST /documents` (multipart for files, JSON body for URLs, returns 202 Accepted, magic byte & extension validation, size cap, duplicate 409 rejection with `existing_document_id`), `PUT /documents/{id}` (version upgrade, returns 202), `GET /documents`, `GET /documents/{id}/status`, `DELETE /documents/{id}` (two-phase delete with immediate `is_active=False` search suppression, returns 202).
+  - Implemented Celery tasks in `app/workers/`: `tasks_ingestion.py` (blue-green cutover: staging chunks with `is_active=False`, atomic activation cutover, purging old chunks, error rollback, heartbeat updates), `tasks_deletion.py` (Phase 2 async purge of Qdrant points, local storage file, and database row), and `tasks_reconcile.py` (periodic task detecting expired worker heartbeats and recovering/failing stuck documents).
+  - Updated `docker-compose.yml` worker and beat services with real Celery commands (`celery worker` and `celery beat`), volume mounts, and `env_file`.
+  - Implemented re-indexing CLI in `scripts/reindex.py` to re-embed all active documents from source files when embedding model changes.
+  - Implemented test suites: `tests/test_ssrf.py` (8 unit/integration tests) and `tests/test_lifecycle_consistency.py` (6 tests covering duplicate prevention, blue-green search consistency, update rollback on failure, two-phase delete, ingestion reconciler, and task idempotency).
+  - Ingested 2 live files from `sample_kb/` (`CSE446 Lecture 1.pdf` and `CSE446 Lecture 2.pdf`) via API; verified transition to `active` and validated Qdrant vectors (1024-dim dense, BM25 sparse) and payload schemas.
+- Tests run and results:
+  - `docker compose exec api pytest tests/ -v`: All 43 tests passed across all suites (SSRF, lifecycle consistency, LLM adapters, auth, config, health).
+  - `docker compose exec api python -m scripts.verify_ingest`: Live API upload, Celery background worker ingestion, Qdrant vectors, and status transitions verified end-to-end.
+  - `docker compose exec api python -m scripts.reindex`: Successfully re-indexed active sample documents into Qdrant collection `kb_chunks`.
+- Files changed:
+  - `backend/requirements.txt`
+  - `docker-compose.yml`
+  - `backend/app/main.py`
+  - `backend/app/models/schemas.py`
+  - `backend/app/db/qdrant.py`
+  - `backend/app/services/embedding/base.py`
+  - `backend/app/services/embedding/local.py`
+  - `backend/app/services/embedding/openai_compat.py`
+  - `backend/app/services/embedding/factory.py`
+  - `backend/app/services/parsers/pdf.py`
+  - `backend/app/services/parsers/docx.py`
+  - `backend/app/services/parsers/markdown.py`
+  - `backend/app/services/parsers/text.py`
+  - `backend/app/services/parsers/web.py`
+  - `backend/app/services/chunker.py`
+  - `backend/app/api/v1/documents.py`
+  - `backend/app/workers/celery_app.py`
+  - `backend/app/workers/tasks_ingestion.py`
+  - `backend/app/workers/tasks_deletion.py`
+  - `backend/app/workers/tasks_reconcile.py`
+  - `backend/scripts/reindex.py`
+  - `backend/scripts/verify_ingest.py`
+  - `backend/tests/test_ssrf.py`
+  - `backend/tests/test_lifecycle_consistency.py`
+  - `backend/tests/test_config.py`
+  - `docs/progress.md`
+  - `docs/decisions.md`
 
 ## Session log (newest first)
 ### 2026-10-05, Phase 1.5 (LLM Provider Layer)

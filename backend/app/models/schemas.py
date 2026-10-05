@@ -47,3 +47,49 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentUrlCreateRequest(BaseModel):
+    """Payload to ingest a web URL."""
+    url: str
+    name: Optional[str] = None
+
+
+class DocumentResponse(BaseModel):
+    """Representation of a document and its lifecycle metadata."""
+    id: uuid.UUID
+    name: str
+    source_type: str
+    source_uri: str
+    sha256: str
+    size_bytes: int
+    status: str
+    active_version: Optional[int] = None
+    pending_version: Optional[int] = None
+    last_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentStatusResponse(BaseModel):
+    """Document status and lifecycle check response."""
+    id: uuid.UUID
+    name: str
+    status: str
+    active_version: Optional[int] = None
+    pending_version: Optional[int] = None
+    last_error: Optional[str] = None
+    heartbeat_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentAcceptedResponse(BaseModel):
+    """Accepted (202) response for asynchronous background document ingestion/deletion."""
+    document_id: str
+    task_id: Optional[str] = None
+    status: str = "accepted"
+    message: str
+
