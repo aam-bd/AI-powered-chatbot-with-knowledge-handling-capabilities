@@ -95,6 +95,9 @@ class Settings(BaseSettings):
         "I'm sorry, I couldn't find information about that in my knowledge base."
     )
     GREETING_MESSAGE: Optional[str] = None
+    SYSTEM_ERROR_MESSAGE: str = (
+        "Something went wrong on my side. Please try again in a moment."
+    )
 
     # --------------------------------------------------------------------------
     # Validators

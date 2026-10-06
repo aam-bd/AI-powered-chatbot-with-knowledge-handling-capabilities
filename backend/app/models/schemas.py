@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
@@ -140,4 +140,50 @@ class RouterDecision(BaseModel):
     intent: RouterIntent
     clarification_message: Optional[str] = None
     standalone_query: Optional[str] = None
+
+
+# ------------------------------------------------------------------------------
+# SSE Streaming & Citations Schemas (Phase 4 Second Half)
+# ------------------------------------------------------------------------------
+
+class ChatStreamRequest(BaseModel):
+    """Request payload for POST /api/v1/chat/stream."""
+    session_id: str = Field(..., min_length=1, max_length=128, description="Conversation session ID")
+    message: str = Field(..., min_length=1, description="User question or statement")
+
+
+class CitationItem(BaseModel):
+    """Single resolved source citation item for frontend drawer rendering."""
+    tag: str = Field(..., description="Citation marker tag, e.g. C1")
+    document: str = Field(..., description="Document filename or display name")
+    page: Optional[int] = Field(None, description="Page number if applicable")
+    section: Optional[str] = Field(None, description="Section heading if applicable")
+    chunk_id: str = Field(..., description="Unique chunk point identifier")
+
+
+class CitationsEventPayload(BaseModel):
+    """Payload for SSE 'citations' event."""
+    citations: List[CitationItem]
+
+
+class RetractEventPayload(BaseModel):
+    """Payload for SSE 'retract' event when answer is ungrounded."""
+    text: str
+
+
+class ErrorEventPayload(BaseModel):
+    """Payload for SSE 'error' event."""
+    message: str
+    code: str
+
+
+class DoneEventPayload(BaseModel):
+    """Payload for SSE 'done' event terminating the response stream."""
+    intent: str
+    fallback_layer: Optional[int] = None
+
+
+class TokenEventPayload(BaseModel):
+    """Payload for SSE 'token' event."""
+    text: str
 

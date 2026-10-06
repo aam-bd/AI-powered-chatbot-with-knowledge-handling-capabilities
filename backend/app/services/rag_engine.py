@@ -31,6 +31,7 @@ class RetrievedChunk:
     token_count: int = 0
     page_number: Optional[int] = None
     section_heading: Optional[str] = None
+    document_name: Optional[str] = None
     retrieval_score: float = 0.0
     rerank_score: float = 0.0
     raw_rerank_score: float = 0.0
@@ -216,6 +217,7 @@ class RAGEngine:
                     token_count=int(payload.get("token_count", 0)),
                     page_number=payload.get("page_number"),
                     section_heading=payload.get("section_heading"),
+                    document_name=payload.get("document_name"),
                     retrieval_score=float(point.score or 0.0),
                 )
             )

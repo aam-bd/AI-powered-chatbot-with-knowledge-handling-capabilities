@@ -2,9 +2,9 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 4 (Router, memory, generation, citations, SSE chat)
-- Last completed task: Prompt 4 (First Half): Session manager, intent router, canned replies, session APIs
-- Next task: Prompt 4 (Second Half): Generation, sentinel [[NOT_FOUND]], citations drawer, retract, POST /chat/stream, query_logs
+- Current phase: 5 (Frontend: login, chat, admin)
+- Last completed task: Prompt 4: Router, memory, generation, citations and streaming (Phase 4 Complete)
+- Next task: Prompt 5: Frontend (Next.js App Router, TypeScript, Tailwind)
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -12,16 +12,18 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
 - [x] 2 Embeddings, parsers, ingestion, document lifecycle
 - [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
-- [ ] 4 Router, memory, generation, citations, SSE chat (First Half complete: Router, Memory, Canned Replies, Session APIs)
+- [x] 4 Router, memory, generation, citations, SSE chat
 - [ ] 5 Frontend (login, chat, admin)
 - [ ] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
-C1 [x]  C2 [x]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
-G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
+C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [ ]  G4 [x]
+G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-06: Implemented Layer 2 sentinel buffer window (15 characters) in `app/services/generation_service.py` ensuring multi-token split sentinels (`["[[", "NOT_", "FOUND]]"]`) abort generation without leaking tokens.
+- 2026-10-06: Implemented Layer 3 citation validator in `app/services/citation_service.py` extracting `[Cn]` tags, pruning hallucinated tags, and sending `retract` SSE event when answers lack grounding.
 - 2026-10-06: Introduced `KB_TOPIC` setting and auto-formatting into `GREETING_MESSAGE` in `app/core/config.py` and `.env.example`.
 - 2026-10-06: Implemented `_LazyRedisProxy` in `app/db/redis.py` caching clients per running asyncio event loop ID to cleanly support pytest-asyncio test runner execution while preserving zero-connection-overhead proxy semantics.
 - 2026-10-05: Upgraded Qdrant to `v1.11.0` in `docker-compose.yml` to support the native Universal Query API (`query_points` with `prefetch` on dense and sparse vectors and `FusionQuery(fusion=Fusion.RRF)`).
@@ -33,9 +35,29 @@ G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 4 (First Half).
+- None from Phase 4.
 
 ## Session log (newest first)
+### 2026-10-06, Phase 4 (Second Half: Generation, Sentinel Buffering, Layer 3 Citations, SSE Stream, Telemetry)
+- Done:
+  - Added `SYSTEM_ERROR_MESSAGE` to `app/core/config.py`.
+  - Added `ChatStreamRequest`, `CitationItem`, `CitationsEventPayload`, `RetractEventPayload`, `ErrorEventPayload`, `DoneEventPayload`, and `TokenEventPayload` to `app/models/schemas.py`.
+  - Implemented `CitationService` in `app/services/citation_service.py` to extract `[Cn]` tags, prune hallucinated tags not in context, detect lack of grounding for Layer 3 retraction, and resolve valid citations to `{tag, document, page, section, chunk_id}`.
+  - Implemented `generation_service.py` with Architecture §6.5 answer prompt assembly (untrusted data, no document names/pages shown to model, sentinel rules) and `stream_with_sentinel_buffer` buffering the initial ~15 characters to catch `[[NOT_FOUND]]` sentinels across arbitrary token boundaries.
+  - Implemented `POST /api/v1/chat/stream` SSE endpoint in `app/api/v1/chat.py`:
+    - Full pipeline orchestration: Redis history load -> FAST intent router & rewrite -> RAG hybrid search & cross-encoder rerank.
+    - Layer 1 fallback check (< `RERANK_THRESHOLD`).
+    - Grounded generation through `ANSWER` role (`gemini-3.1-flash-lite`) with Layer 2 sentinel buffering and abort.
+    - Post-generation Layer 3 citation verification with `retract` SSE event on ungrounded answers, or `citations` event on success.
+    - Telemetry: asynchronously writes detailed audit row to `query_logs` table (queries, scores, threshold, fallback layer, citations, router/retrieval/rerank/generation latencies).
+    - Normalized error handling yielding `event: error` with `SYSTEM_ERROR_MESSAGE` and masked logs.
+    - Conversation memory update: stores user and assistant turns in Redis session list with appropriate `kind` marker (`normal`, `clarify`, `fallback`).
+  - Implemented comprehensive acceptance test suite in `tests/test_rag_pipeline.py` (12 tests covering all branches and edge cases).
+  - Executed live end-to-end curl chat against running container stack on active `sample_kb` documents: verified real-time token streaming, cited `[C1]`, resolved citation to `"CSE446 Lecture 2.pdf"` (Page 9), and recorded `query_logs` telemetry with latency breakdown.
+- Tests run and results:
+  - `docker compose exec api pytest tests/ -v`: All 75 tests passed (100% pass across all test suites).
+  - Real end-to-end curl against running API: HTTP 200 SSE stream completed with tokens, citations, and done.
+  - Live PostgreSQL `query_logs`: Verified row 37 created with intent `SEARCH`, score `0.9966`, cited chunk IDs, and latency breakdown.
 ### 2026-10-06, Phase 4 (First Half: Router, Memory, Canned Replies, Session Management)
 - Done:
   - Added `KB_TOPIC` (default: `"the knowledge base"`) to `Settings` in `app/core/config.py` and updated validator to dynamically format `GREETING_MESSAGE`. Updated `.env.example` with `KB_TOPIC=blockchain and cryptocurrencies`.

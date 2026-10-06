@@ -97,6 +97,7 @@ async def _async_ingest_document(document_id: str, version: Optional[int] = None
                 points = []
                 for chunk, dense, sparse in zip(batch_chunks, dense_vecs, sparse_vecs):
                     payload = chunk.to_payload()
+                    payload["document_name"] = doc.name
                     payload["is_active"] = False  # Hidden from queries during staging
 
                     points.append(

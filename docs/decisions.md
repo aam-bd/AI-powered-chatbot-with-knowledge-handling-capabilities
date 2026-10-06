@@ -116,3 +116,22 @@ This document records key architectural and design decisions made throughout dev
 - **Decision:** Implement `IntentRouter` using the FAST LLM role (`gemini-3.1-flash-lite`), enforcing strict JSON schema `{intent, clarification_message, standalone_query}` via Pydantic. If JSON parsing fails, perform a single immediate correction prompt retry. If parsing still fails or an unhandled LLM error occurs, fail-open to `intent="search"` with the user's raw message. Pure greetings return `GREETING_MESSAGE` with zero retrieval or generation costs; ambiguous inputs ask for clarification; and follow-up queries with coreferences (e.g. "what is its role?") are rewritten into self-contained search queries using recent conversation history while strictly excluding prior fallback/out-of-domain messages.
 - **Rationale:** Minimizes latency and token costs on conversational niceties while ensuring conversational queries never fail or block the user when classification is uncertain.
 - **Traceability:** Architecture §6.1, §6.2, Prompt 4.
+
+---
+
+## 2026-10-06: Phase 4 (Second Half) - Generation, Layer 2/3 Guardrails, SSE Streaming & Telemetry
+
+### D-020: Layer 2 Stream Buffering for `[[NOT_FOUND]]` Sentinel Detection
+- **Decision:** Buffer the first ~15 characters of the LLM generation stream before yielding tokens to the client. If the buffer matches `[[NOT_FOUND]]` (even when split across arbitrary stream chunk boundaries, e.g. `["[[", "NOT_", "FOUND]]"]`), immediately abort the generation stream, suppress all generated tokens, and deliver `FALLBACK_MESSAGE` with `fallback_layer=2`.
+- **Rationale:** Prevents models that acknowledge lack of knowledge from leaking sentinel syntax or partial non-answers to the user, while adding negligible (~1 token) time-to-first-token latency.
+- **Traceability:** Architecture §6.5, Prompt 4.
+
+### D-021: Layer 3 Citation Verification, Retraction, and Hallucination Filtering
+- **Decision:** Post-process generated answers by extracting `\[C(\d+)\]` tags and matching against the injected context chunks ($1 \le n \le N$). Prune any hallucinated tags not in context. If no valid citations remain, emit an SSE `retract` event with `FALLBACK_MESSAGE` (`fallback_layer=3`), instructing the client to replace the displayed text.
+- **Rationale:** Ensures that even if an LLM hallucinates an answer or cites non-existent sources, the system strictly retracts ungrounded assertions before concluding the interaction.
+- **Traceability:** Architecture §6.6, Prompt 4.
+
+### D-022: Server-Sent Events (SSE) Streaming Protocol and Telemetry Audit Logging
+- **Decision:** Implement `POST /api/v1/chat/stream` using HTTP `text/event-stream` with typed events (`token`, `citations`, `retract`, `error`, `done`). Asynchronously insert a record into the `query_logs` table for every turn, recording original and standalone queries, intent, top scores, threshold, fallback layer, cited chunk IDs, and per-stage latencies (router, retrieval, rerank, generation).
+- **Rationale:** Complies with Architecture §6.8 SSE streaming protocol and §10 telemetry requirements for end-to-end observability and prompt evaluation.
+- **Traceability:** Architecture §6.8, §7, §10, Prompt 4.
