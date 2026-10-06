@@ -2,9 +2,9 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 5 (Frontend: login, chat, admin)
-- Last completed task: Prompt 5 (First Half): Next.js project, Dockerfile & compose service, auth/login with auto-refresh, role-aware routing, streaming chat, citations drawer, and session management
-- Next task: Prompt 5 (Second Half): Admin page (AdminDocManager with upload, URL ingestion, status polling, versioning, delete)
+- Current phase: 6 (Evaluation and threshold calibration)
+- Last completed task: Prompt 5: Frontend (Next.js App Router, TypeScript, Tailwind, Login, Chat, Admin) (Phase 5 Complete)
+- Next task: Prompt 6: Evaluation and calibration (calibrate_threshold.py, run_eval.py)
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -13,15 +13,16 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 2 Embeddings, parsers, ingestion, document lifecycle
 - [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [x] 4 Router, memory, generation, citations, SSE chat
-- [ ] 5 Frontend (login, chat [x], admin [ ])
+- [x] 5 Frontend (login, chat, admin)
 - [ ] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [ ]  G4 [x]
-G5 [x]  G6 [x]  G7 [x]  S1 [ ]  S2 [x]  S3 [x]
+G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-06: Implemented `AdminDocManager.tsx` with dynamic status polling (2.5s) while documents are active, automatic termination upon reaching terminal states, and strict role-based route guard on `/admin` denying non-admin access (HTTP 403).
 - 2026-10-06: Configured Next.js 14 standalone output (`output: 'standalone'`) in multi-stage Alpine Dockerfile with unprivileged `nextjs` user and Node HTTP healthcheck in `docker-compose.yml`.
 - 2026-10-06: Implemented fetch-based SSE parser in `streamChat.ts` passing `Authorization: Bearer <token>` and parsing `token`, `citations`, `retract`, `error`, and `done` events with automatic token refresh on 401.
 - 2026-10-06: Implemented Layer 2 sentinel buffer window (15 characters) in `app/services/generation_service.py` ensuring multi-token split sentinels (`["[[", "NOT_", "FOUND]]"]`) abort generation without leaking tokens.
@@ -37,9 +38,27 @@ G5 [x]  G6 [x]  G7 [x]  S1 [ ]  S2 [x]  S3 [x]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- Phase 5 Second Half: Implement AdminDocManager (file and URL ingest, polling table, version update, delete) and verify non-admin access restrictions.
+- None from Phase 5. Next: Phase 6 (Evaluation and calibration).
 
 ## Session log (newest first)
+### 2026-10-06 - Prompt 5 (Second Half): Admin Document Manager & Access Isolation (Phase 5 Complete)
+- **Goal:** Carry out the second half of Prompt 5: Admin page (AdminDocManager) with file upload and URL ingest, documents table with status polling, last_error display, new-version upload and delete with confirmation, admin-only access, responsive layout polish, and acceptance checks.
+- **Files Created/Modified:**
+  - `frontend/src/types/chat.ts`: Added `DocumentItem` and `DocumentStatus` types.
+  - `frontend/src/services/api.ts`: Added `fetchDocuments`, `uploadDocumentFile`, `uploadDocumentUrl`, `updateDocumentFile`, `deleteDocument`, and `getDocumentStatus`.
+  - `frontend/src/components/AdminDocManager.tsx`: Full implementation of upload panel (files/URLs), documents table with color-coded status badges, live status polling (2.5s) while documents are in flight, `last_error` modal, new version update modal, and two-phase delete confirmation modal.
+  - `frontend/src/app/admin/page.tsx`: Protected `/admin` route with admin verification and custom 403 Forbidden screen for non-admin accounts.
+  - `frontend/src/components/SessionControls.tsx`: Added "Admin Portal" navigation button for admin users.
+  - `frontend/src/components/ChatWindow.tsx` & `frontend/src/app/page.tsx`: Added responsive mobile drawer toggle and hamburger button.
+  - `frontend/scripts/test_admin_flow.mjs`: Automated integration test verifying admin upload, polling, version replacement, deletion, and non-admin 403 rejection.
+  - `docs/decisions.md`: Recorded D-025.
+  - `docs/progress.md`: Marked Phase 5 complete and updated requirement S1 to satisfied.
+- **Verification:**
+  - `docker compose build frontend`: Next.js standalone build compiled with routes `/`, `/login`, and `/admin`.
+  - `docker compose up -d frontend`: `chatbot-frontend` restarted and healthy.
+  - `node frontend/scripts/test_admin_flow.mjs`: Verified 100% of admin lifecycle (upload, polling to active, version 2 update, two-phase delete) and confirmed that non-admin accounts are blocked with HTTP 403.
+  - `docker compose exec api pytest tests/`: All 75 backend tests continue to pass with 0 regressions.
+
 ### 2026-10-06 - Prompt 5 (First Half): Frontend Architecture, Auth & Real-Time Chat
 - **Goal:** Carry out the first half of Prompt 5: Next.js project with Dockerfile, docker-compose service, NEXT_PUBLIC_API_URL, login page with auto-refresh, role-aware routing via GET /auth/me, and real-time streaming chat interface with citations drawer.
 - **Files Created/Modified:**

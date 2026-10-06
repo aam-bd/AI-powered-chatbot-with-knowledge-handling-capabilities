@@ -14,18 +14,21 @@ import {
   User as UserIcon,
   RotateCcw,
   BookOpen,
+  Menu,
 } from 'lucide-react';
 
 interface ChatWindowProps {
   sessionId: string;
   onSessionUpdated?: () => void;
   onNewChat?: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export default function ChatWindow({
   sessionId,
   onSessionUpdated,
   onNewChat,
+  onToggleSidebar,
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -223,8 +226,17 @@ export default function ChatWindow({
   return (
     <div className="flex-1 h-full flex flex-col bg-background relative overflow-hidden">
       {/* Top Navbar */}
-      <div className="h-14 px-6 border-b border-gray-800 glass-panel flex items-center justify-between z-10">
+      <div className="h-14 px-4 sm:px-6 border-b border-gray-800 glass-panel flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="md:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              title="Toggle Sessions Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-medium text-gray-300">
             Session: <span className="font-mono text-emerald-400">{sessionId.slice(0, 8)}...</span>

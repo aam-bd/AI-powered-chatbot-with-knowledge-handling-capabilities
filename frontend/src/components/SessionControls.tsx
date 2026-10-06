@@ -135,6 +135,22 @@ export default function SessionControls({
         )}
       </div>
 
+      {/* Admin Portal quick link */}
+      {user?.role === 'admin' && (
+        <div className="px-3 pb-2">
+          <a
+            href="/admin"
+            className="w-full py-2 px-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 hover:border-emerald-500/30 text-xs font-semibold flex items-center justify-between transition-all group"
+          >
+            <div className="flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Admin Portal</span>
+            </div>
+            <span className="text-[10px] text-gray-500 group-hover:text-emerald-400">→</span>
+          </a>
+        </div>
+      )}
+
       {/* User profile & logout footer */}
       {user && (
         <div className="p-3 border-t border-gray-800/80 bg-gray-950/60">

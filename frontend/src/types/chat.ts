@@ -50,3 +50,27 @@ export type ChatStreamEvent =
   | { type: 'retract'; text: string; reason?: string }
   | { type: 'error'; code: string; message: string }
   | { type: 'done'; intent?: string; fallback_layer?: number | null };
+
+export type DocumentStatus =
+  | 'pending'
+  | 'processing'
+  | 'active'
+  | 'updating'
+  | 'deleting'
+  | 'failed';
+
+export interface DocumentItem {
+  id: string;
+  name: string;
+  source_type: string;
+  source_uri: string;
+  sha256: string;
+  size_bytes: number;
+  status: DocumentStatus;
+  active_version?: number | null;
+  pending_version?: number | null;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

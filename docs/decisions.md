@@ -150,3 +150,13 @@ This document records key architectural and design decisions made throughout dev
 - **Rationale:** Prevents user interruptions during active conversations when short-lived access tokens (30m) expire, while strictly protecting user sessions and displaying role badges.
 - **Traceability:** Architecture §8, §9.1, §11, Prompt 5.
 
+---
+
+## 2026-10-06: Phase 5 (Second Half) - Admin Document Manager & Access Isolation
+
+### D-025: Admin Document Manager with Status Polling and Role-Based Access Isolation
+- **Decision:** Implement `AdminDocManager.tsx` and protected `/admin` route. Enable file uploads (`.pdf`, `.docx`, `.md`, `.txt`) and web URL ingestion. Poll document status dynamically (every 2.5s) while any document is in progress (`pending`, `processing`, `updating`, `deleting`), auto-stopping on terminal states. Enforce strict role-based access isolation: unauthenticated requests redirect to `/login`, and authenticated non-admin accounts (`role === 'user'`) receive a dedicated 403 Forbidden screen preventing any document operations.
+- **Rationale:** Ensures complete document lifecycle management with real-time feedback without overloading the server with indefinite polling, while guaranteeing non-admin users cannot inspect, modify, or delete knowledge base sources.
+- **Traceability:** Architecture §5, §8, §9.1, §11, Prompt 5.
+
+

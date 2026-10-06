@@ -1,4 +1,4 @@
-import { TokenResponse, User, SessionSummary } from '@/types/chat';
+import { TokenResponse, User, SessionSummary, DocumentItem } from '@/types/chat';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -184,3 +184,95 @@ export async function deleteChatSession(sessionId: string): Promise<boolean> {
   });
   return res.ok;
 }
+
+// -----------------------------------------------------------------------------
+// Document Management Endpoints (Admin Only)
+// -----------------------------------------------------------------------------
+
+export async function fetchDocuments(
+  skip = 0,
+  limit = 50,
+  statusFilter?: string
+): Promise<DocumentItem[]> {
+  const params = new URLSearchParams({
+    skip: skip.toString(),
+    limit: limit.toString(),
+  });
+  if (statusFilter) {
+    params.set('status', statusFilter);
+  }
+
+  const res = await fetchWithAuth(`/documents?${params.toString()}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch documents' }));
+    throw new Error(err.detail || 'Failed to fetch documents');
+  }
+  return res.json();
+}
+
+export async function uploadDocumentFile(file: File): Promise<any> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetchWithAuth('/documents', {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || 'File upload failed');
+  }
+  return data;
+}
+
+export async function uploadDocumentUrl(url: string, name?: string): Promise<any> {
+  const res = await fetchWithAuth('/documents', {
+    method: 'POST',
+    body: JSON.stringify({ url, name }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || 'URL ingestion failed');
+  }
+  return data;
+}
+
+export async function updateDocumentFile(docId: string, file: File): Promise<any> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetchWithAuth(`/documents/${docId}`, {
+    method: 'PUT',
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || 'Document update failed');
+  }
+  return data;
+}
+
+export async function deleteDocument(docId: string): Promise<any> {
+  const res = await fetchWithAuth(`/documents/${docId}`, {
+    method: 'DELETE',
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || 'Document deletion failed');
+  }
+  return data;
+}
+
+export async function getDocumentStatus(docId: string): Promise<any> {
+  const res = await fetchWithAuth(`/documents/${docId}/status`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch document status');
+  }
+  return res.json();
+}
+

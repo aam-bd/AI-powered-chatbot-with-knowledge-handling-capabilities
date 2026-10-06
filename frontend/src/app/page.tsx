@@ -76,6 +76,8 @@ export default function ChatPage() {
     await loadSessions();
   };
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   if (authLoading || (!user && typeof window !== 'undefined')) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-background text-emerald-400 gap-3">
@@ -90,15 +92,36 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-background">
-      <SessionControls
-        sessions={sessions}
-        activeSessionId={sessionId}
-        onSelectSession={handleSelectSession}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        isLoadingSessions={isLoadingSessions}
-      />
+    <div className="h-screen w-screen flex overflow-hidden bg-background relative">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden animate-fade-in"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar container with mobile slide-in */}
+      <div
+        className={`fixed inset-y-0 left-0 z-40 md:static md:z-auto transition-transform duration-200 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        <SessionControls
+          sessions={sessions}
+          activeSessionId={sessionId}
+          onSelectSession={(id) => {
+            handleSelectSession(id);
+            setSidebarOpen(false);
+          }}
+          onNewChat={() => {
+            handleNewChat();
+            setSidebarOpen(false);
+          }}
+          onDeleteSession={handleDeleteSession}
+          isLoadingSessions={isLoadingSessions}
+        />
+      </div>
 
       <main className="flex-1 h-full flex flex-col min-w-0">
         {sessionId && (
@@ -107,6 +130,7 @@ export default function ChatPage() {
             sessionId={sessionId}
             onSessionUpdated={loadSessions}
             onNewChat={handleNewChat}
+            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
           />
         )}
       </main>
