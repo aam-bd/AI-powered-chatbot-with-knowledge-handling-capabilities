@@ -159,4 +159,13 @@ This document records key architectural and design decisions made throughout dev
 - **Rationale:** Ensures complete document lifecycle management with real-time feedback without overloading the server with indefinite polling, while guaranteeing non-admin users cannot inspect, modify, or delete knowledge base sources.
 - **Traceability:** Architecture §5, §8, §9.1, §11, Prompt 5.
 
+---
+
+## 2026-10-06: Phase 6 - Evaluation and Calibration
+
+### D-026: Strict Evaluation Dataset Separation and Multi-Layer Benchmark Harness
+- **Decision:** Separate evaluation into `calibration_set.json` (used exclusively for setting `RERANK_THRESHOLD`) and `test_set.json` (held-out scoring set). Strictly enforce that `calibrate_threshold.py` raises an exception if pointed to `test_set.json`. Implement `calibrate_threshold.py` sweeping candidate thresholds and recording F1, precision, recall, and fallback rejection. Implement `run_eval.py` executing test items against the running API with JWT authentication, Redis memory priming for multi-turn history, strict in-code citation validity verification, fact extraction checking against `expected_facts`, and an optional labeled LLM-as-judge step using the FAST LLM adapter.
+- **Rationale:** Strictly enforces the Architecture §13 machine learning principle that thresholds must never be tuned on test data. Provides end-to-end reproducibility, quantitative metrics across all 3 guardrail layers, and honest diagnostic logging without synthetic results.
+- **Traceability:** Architecture §13, Prompt 6.
+
 

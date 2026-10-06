@@ -1,0 +1,124 @@
+{
+  "timestamp": "2026-10-06T08:37:28.948610+00:00",
+  "total_questions": 3,
+  "passed": 1,
+  "failed": 2,
+  "overall_accuracy_pct": 33.33,
+  "router_accuracy_pct": 100.0,
+  "answer_facts_accuracy_pct": 100.0,
+  "citations_validity_pct": 100.0,
+  "fallback_accuracy_pct": 100.0,
+  "fallback_layer_distribution": {
+    "1": 1,
+    "2": 0,
+    "3": 0,
+    "unknown": 0
+  },
+  "category_breakdown": {
+    "direct_in_scope": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "multi_turn_followup": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "completely_unrelated": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "failures": [
+    {
+      "id": "test-01",
+      "category": "direct_in_scope",
+      "question": "What is pre-image resistance in cryptographic hash functions?",
+      "expected_behavior": "answer",
+      "reasons": [
+        "LLM Judge rejected: LLM judge invocation error: 'OpenAICompatAdapter' object has no attribute 'generate'"
+      ],
+      "answer_preview": "Pre-image resistance in a cryptographic hash function means that for essentially all pre-specified outputs $y$, it is co"
+    },
+    {
+      "id": "test-02",
+      "category": "multi_turn_followup",
+      "question": "Is finding a collision computationally feasible in practice?",
+      "expected_behavior": "answer",
+      "reasons": [
+        "LLM Judge rejected: LLM judge invocation error: 'OpenAICompatAdapter' object has no attribute 'generate'"
+      ],
+      "answer_preview": "No, finding a collision for a 256-bit hash function is not considered computationally feasible in practice [C1]. \n\nWhile"
+    }
+  ],
+  "results": [
+    {
+      "id": "test-01",
+      "category": "direct_in_scope",
+      "question": "What is pre-image resistance in cryptographic hash functions?",
+      "expected_behavior": "answer",
+      "status": "FAIL",
+      "router_intent": "SEARCH",
+      "router_pass": true,
+      "fallback_layer": null,
+      "fallback_pass": true,
+      "citations_count": 1,
+      "citations_pass": true,
+      "citations_reason": "Valid (1 citations)",
+      "facts_pass": true,
+      "matched_facts": [
+        "infeasible to find",
+        "one-way"
+      ],
+      "missing_facts": [],
+      "llm_judge_pass": false,
+      "llm_judge_reason": "LLM judge invocation error: 'OpenAICompatAdapter' object has no attribute 'generate'",
+      "answer_text": "Pre-image resistance in a cryptographic hash function means that for essentially all pre-specified outputs $y$, it is computationally infeasible to find an input $x$ such that $H(x) = y$ [C1]. Because of this property, the hash function $H$ is also referred to as a one-way function [C1]. If $x$ is drawn from a uniform distribution with a large number of elements, inverting $H(x)$ is considered hard [C1]."
+    },
+    {
+      "id": "test-02",
+      "category": "multi_turn_followup",
+      "question": "Is finding a collision computationally feasible in practice?",
+      "expected_behavior": "answer",
+      "status": "FAIL",
+      "router_intent": "SEARCH",
+      "router_pass": true,
+      "fallback_layer": null,
+      "fallback_pass": true,
+      "citations_count": 2,
+      "citations_pass": true,
+      "citations_reason": "Valid (2 citations)",
+      "facts_pass": true,
+      "matched_facts": [
+        "computationally feasible",
+        "years"
+      ],
+      "missing_facts": [],
+      "llm_judge_pass": false,
+      "llm_judge_reason": "LLM judge invocation error: 'OpenAICompatAdapter' object has no attribute 'generate'",
+      "answer_text": "No, finding a collision for a 256-bit hash function is not considered computationally feasible in practice [C1]. \n\nWhile a collision is guaranteed to exist due to the pigeonhole principle [C2], finding one is hard [C2]. For a 256-bit hash function, the best-case scenario for finding a collision requires on average $2^{128}$ operations [C1]. To illustrate the infeasibility, if a computer were capable of calculating 10,000 hashes per second, it would take $10^{27}$ years to generate $2^{128}$ hashes [C1]."
+    },
+    {
+      "id": "test-03",
+      "category": "completely_unrelated",
+      "question": "What is the official capital city of Australia?",
+      "expected_behavior": "fallback",
+      "status": "PASS",
+      "router_intent": "SEARCH",
+      "router_pass": true,
+      "fallback_layer": 1,
+      "fallback_pass": true,
+      "citations_count": 0,
+      "citations_pass": true,
+      "citations_reason": "No citations present (correct for non-answer)",
+      "facts_pass": true,
+      "matched_facts": [],
+      "missing_facts": [],
+      "llm_judge_pass": true,
+      "llm_judge_reason": "N/A",
+      "answer_text": "I'm sorry, I couldn't find information about that in my knowledge base."
+    }
+  ]
+}

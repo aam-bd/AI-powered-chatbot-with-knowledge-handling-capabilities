@@ -1,1 +1,44 @@
-[]
+[
+  {
+    "id": "test-01",
+    "category": "direct_in_scope",
+    "history": [],
+    "question": "What is pre-image resistance in cryptographic hash functions?",
+    "expected_behavior": "answer",
+    "expected_facts": [
+      "infeasible to find",
+      "one-way"
+    ],
+    "source_doc": "CSE446 Lecture 2.pdf"
+  },
+  {
+    "id": "test-02",
+    "category": "multi_turn_followup",
+    "history": [
+      {
+        "role": "user",
+        "content": "What is collision resistance for a 256-bit hash function?"
+      },
+      {
+        "role": "assistant",
+        "content": "Collision resistance means it is computationally infeasible to find two distinct inputs with the same hash output, requiring on average 2^128 operations to find a collision by the birthday paradox."
+      }
+    ],
+    "question": "Is finding a collision computationally feasible in practice?",
+    "expected_behavior": "answer",
+    "expected_facts": [
+      "computationally feasible",
+      "years"
+    ],
+    "source_doc": "CSE446 Lecture 2.pdf"
+  },
+  {
+    "id": "test-03",
+    "category": "completely_unrelated",
+    "history": [],
+    "question": "What is the official capital city of Australia?",
+    "expected_behavior": "fallback",
+    "expected_facts": [],
+    "source_doc": null
+  }
+]

@@ -2,9 +2,9 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 6 (Evaluation and threshold calibration)
-- Last completed task: Prompt 5: Frontend (Next.js App Router, TypeScript, Tailwind, Login, Chat, Admin) (Phase 5 Complete)
-- Next task: Prompt 6: Evaluation and calibration (calibrate_threshold.py, run_eval.py)
+- Current phase: 6 (Evaluation and threshold calibration - Complete)
+- Last completed task: Prompt 6: Evaluation and calibration (calibrate_threshold.py, run_eval.py, example datasets, make eval/calibrate)
+- Next task: Prompt 7: Audit, hardening and README
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -14,14 +14,17 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [x] 4 Router, memory, generation, citations, SSE chat
 - [x] 5 Frontend (login, chat, admin)
-- [ ] 6 Evaluation and threshold calibration
+- [x] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
-C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [ ]  G4 [x]
+C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
 G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-06: Implemented strict evaluation dataset isolation in `calibrate_threshold.py` enforcing that calibration sweeps exclusively inspect `calibration_set.json` and raise hard errors if pointed to `test_set.json`.
+- 2026-10-06: Implemented `run_eval.py` benchmarking running API with Redis multi-turn conversation memory priming, SSE event streaming, facts verification, in-code citation structural verification, and optional labeled LLM-as-judge step (`gemini-3.1-flash-lite`).
+
 - 2026-10-06: Implemented `AdminDocManager.tsx` with dynamic status polling (2.5s) while documents are active, automatic termination upon reaching terminal states, and strict role-based route guard on `/admin` denying non-admin access (HTTP 403).
 - 2026-10-06: Configured Next.js 14 standalone output (`output: 'standalone'`) in multi-stage Alpine Dockerfile with unprivileged `nextjs` user and Node HTTP healthcheck in `docker-compose.yml`.
 - 2026-10-06: Implemented fetch-based SSE parser in `streamChat.ts` passing `Authorization: Bearer <token>` and parsing `token`, `citations`, `retract`, `error`, and `done` events with automatic token refresh on 401.
@@ -38,9 +41,26 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 5. Next: Phase 6 (Evaluation and calibration).
+- None from Phase 6. Next: Phase 7 (Audit, hardening, and README).
 
 ## Session log (newest first)
+### 2026-10-06 - Prompt 6: Evaluation and Calibration (Phase 6 Complete)
+- **Goal:** Carry out Prompt 6: Create schema-compliant example datasets (`calibration_set.json`, `test_set.json`), `calibrate_threshold.py` with strict test set isolation and threshold sweep, `run_eval.py` benchmarking against running API with fact checking and optional labeled LLM-as-judge step, `make eval`/`calibrate` targets, and acceptance execution.
+- **Files Created/Modified:**
+  - `backend/eval/calibration_set.json`: Schema-compliant 3-question calibration set (in-scope hash collision worst case, out-of-scope Ethereum gas fees, unrelated recipe).
+  - `backend/eval/test_set.json`: Schema-compliant 3-question test set (in-scope pre-image resistance, multi-turn collision feasibility follow-up with history, unrelated capital city).
+  - `backend/eval/calibrate_threshold.py`: Hybrid retrieval and cross-encoder scoring, strict `test_set.json` access prohibition, threshold sweep ($0.05$ to $0.95$), reporting precision, recall, F1, fallback accuracy, and persisting recommended threshold to JSON.
+  - `backend/eval/run_eval.py`: Live API evaluation runner with JWT auth, multi-turn Redis history priming via `get_session_manager()`, fetch-based SSE stream parsing, code-enforced citation validation, fact-checking, optional labeled LLM-as-judge step (`gemini-3.1-flash-lite`), and Markdown/JSON report generation.
+  - `Makefile`: Added `calibrate` target alongside `eval`.
+  - `docs/decisions.md`: Recorded D-026.
+  - `docs/progress.md`: Marked Phase 6 complete and requirement G3 satisfied.
+- **Verification:**
+  - `docker compose exec api python -m eval.calibrate_threshold`: 100% precision/recall/fallback acc on calibration set; recommends threshold $0.50$; persists results to `eval/results/`.
+  - `docker compose exec api python -m eval.calibrate_threshold --dataset eval/test_set.json`: Throws hard `ValueError` confirming strict isolation guard.
+  - `docker compose exec api python -m eval.run_eval`: 100% accuracy (3/3), 100% router accuracy, 100% citation validity, 100% fallback accuracy (Layer 1 triggered on unrelated query).
+  - `docker compose exec api python -m eval.run_eval --use-llm-judge`: 100% accuracy with live LLM judge verifying answers and recording rationale.
+  - `docker compose exec api pytest tests/`: All 75 tests passing in 30.97s with zero regressions.
+
 ### 2026-10-06 - Prompt 5 (Second Half): Admin Document Manager & Access Isolation (Phase 5 Complete)
 - **Goal:** Carry out the second half of Prompt 5: Admin page (AdminDocManager) with file upload and URL ingest, documents table with status polling, last_error display, new-version upload and delete with confirmation, admin-only access, responsive layout polish, and acceptance checks.
 - **Files Created/Modified:**

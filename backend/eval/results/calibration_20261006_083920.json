@@ -1,0 +1,260 @@
+{
+  "timestamp": "2026-10-06T08:39:20.320201+00:00",
+  "dataset_evaluated": "/app/eval/calibration_set.json",
+  "total_questions": 3,
+  "recommended_threshold": 0.5,
+  "recommended_metrics": {
+    "threshold": 0.5,
+    "tp": 1,
+    "fp": 0,
+    "tn": 2,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "fallback_accuracy": 1.0
+  },
+  "scored_items": [
+    {
+      "id": "cal-01",
+      "category": "direct_in_scope",
+      "question": "What is the worst case number of tries to find a collision for a 256-bit hash function?",
+      "expected_behavior": "answer",
+      "top_score": 0.9932,
+      "raw_top_score": 4.9835,
+      "top_document": null,
+      "chunk_count": 15
+    },
+    {
+      "id": "cal-02",
+      "category": "topical_out_of_scope",
+      "question": "How are Ethereum gas fees calculated when minting an ERC-721 NFT?",
+      "expected_behavior": "fallback",
+      "top_score": 0.001,
+      "raw_top_score": -6.9099,
+      "top_document": null,
+      "chunk_count": 15
+    },
+    {
+      "id": "cal-03",
+      "category": "completely_unrelated",
+      "question": "What ingredients are traditionally used to make French beef bourguignon?",
+      "expected_behavior": "fallback",
+      "top_score": 0.0002,
+      "raw_top_score": -8.5055,
+      "top_document": null,
+      "chunk_count": 15
+    }
+  ],
+  "sweep_table": [
+    {
+      "threshold": 0.05,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.1,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.15,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.2,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.25,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.3,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.35,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.4,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.45,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.5,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.55,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.65,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.75,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.85,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    },
+    {
+      "threshold": 0.95,
+      "tp": 1,
+      "fp": 0,
+      "tn": 2,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fallback_accuracy": 1.0
+    }
+  ]
+}

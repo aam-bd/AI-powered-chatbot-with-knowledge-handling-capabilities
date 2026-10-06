@@ -1,4 +1,4 @@
-.PHONY: up down logs test eval lint
+.PHONY: up down logs test eval calibrate lint
 
 up:
 	docker compose up -d --build
@@ -11,6 +11,9 @@ logs:
 
 test:
 	docker compose exec api pytest tests/ -v
+
+calibrate:
+	docker compose exec api python -m eval.calibrate_threshold
 
 eval:
 	docker compose exec api python -m eval.run_eval
