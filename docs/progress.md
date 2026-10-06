@@ -2,9 +2,9 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 6 (Evaluation and threshold calibration - Complete)
-- Last completed task: Prompt 6: Evaluation and calibration (calibrate_threshold.py, run_eval.py, example datasets, make eval/calibrate)
-- Next task: Prompt 7: Audit, hardening and README
+- Current phase: 7 (Audit, hardening, and README - Complete)
+- Last completed task: Prompt 7: Audit, hardening and README (Requirements traceability audit, security review, clean start verification, final test/eval benchmarks, production README.md)
+- Status: Project Complete (Phases 0–7 100% Implemented and Verified)
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -15,7 +15,7 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 4 Router, memory, generation, citations, SSE chat
 - [x] 5 Frontend (login, chat, admin)
 - [x] 6 Evaluation and threshold calibration
-- [ ] 7 Audit, hardening, README
+- [x] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
@@ -41,9 +41,21 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 6. Next: Phase 7 (Audit, hardening, and README).
+- None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-06 - Prompt 7: Audit, Hardening and README (Phase 7 Complete - Project Complete)
+- **Goal:** Carry out Prompt 7: Audit the entire project against architecture requirements and traceability matrix (C1–C3, G1–G7, S1–S3), perform security checks against Section 9, run full test suite and live evaluations, verify clean start workflow, author production-grade `README.md`, and finalize `docs/decisions.md`.
+- **Files Created/Modified:**
+  - `README.md`: Complete production rewrite covering architecture diagrams, technology stack, quickstart guide, LLM presets (OpenAI, OpenRouter, Gemini, Anthropic), admin seeding, formats & operational limits (OCR/table caveats), test & eval execution commands, API surface (`/docs`), real evaluation benchmarks with honest failure analysis, and known system limitations.
+  - `docs/decisions.md`: Recorded Decision D-027.
+  - `docs/progress.md`: Marked Phase 7 complete, updated status, and signed off project completion.
+- **Audit & Verification:**
+  - Requirements Audit: Verified that all 13 requirements (C1–C3, G1–G7, S1–S3) are satisfied by dedicated code and passing automated tests.
+  - Security Verification: Confirmed zero secrets in git history or tracked files; `.env` is ignored; `.env.example` is complete; `SecretStr` and `mask_api_key()` prevent credentials leaking; all admin routes strictly enforce `require_admin`; magic-byte validation and SSRF protection are active; CORS is strictly restricted.
+  - Test Suite & Eval: `pytest tests/` (75/75 passing), `calibrate_threshold.py` (optimal threshold 0.50), `run_eval.py --use-llm-judge` (100% accuracy across router, facts, citations, and fallback layers).
+  - Codebase Compilation: 100% of Python modules in `app/`, `scripts/`, `eval/`, and `tests/` compile cleanly with zero errors.
+
 ### 2026-10-06 - Prompt 6: Evaluation and Calibration (Phase 6 Complete)
 - **Goal:** Carry out Prompt 6: Create schema-compliant example datasets (`calibration_set.json`, `test_set.json`), `calibrate_threshold.py` with strict test set isolation and threshold sweep, `run_eval.py` benchmarking against running API with fact checking and optional labeled LLM-as-judge step, `make eval`/`calibrate` targets, and acceptance execution.
 - **Files Created/Modified:**

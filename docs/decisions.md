@@ -168,4 +168,11 @@ This document records key architectural and design decisions made throughout dev
 - **Rationale:** Strictly enforces the Architecture §13 machine learning principle that thresholds must never be tuned on test data. Provides end-to-end reproducibility, quantitative metrics across all 3 guardrail layers, and honest diagnostic logging without synthetic results.
 - **Traceability:** Architecture §13, Prompt 6.
 
+---
 
+## 2026-10-06: Phase 7 - Audit, Hardening and Production Release
+
+### D-027: Traceability Verification, Security Hardening, and Production Documentation
+- **Decision:** Perform complete end-to-end audit verifying that all 13 core, good-to-have, and system requirements (C1–C3, G1–G7, S1–S3) are satisfied with dedicated code and automated tests. Confirm zero secret leaks in git history or files, verify .env ignore and .env.example completeness, enforce role-based access on admin endpoints, and author a comprehensive production README.md containing architecture diagrams, provider presets, operational caveats, benchmark outputs, and known limitations.
+- **Rationale:** Ensures the system satisfies every non-functional security requirement, guarantees operational maintainability and reproducibility, and provides transparent documentation of architectural design decisions and real benchmark performance.
+- **Traceability:** Architecture §1.1, §9, §19, §20, Prompt 7.
