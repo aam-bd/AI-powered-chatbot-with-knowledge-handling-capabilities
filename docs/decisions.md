@@ -98,6 +98,21 @@ This document records key architectural and design decisions made throughout dev
 ### D-016: Sigmoid-Normalized Scoring with Raw Logit Telemetry and Layer 1 Fallback Gating
 - **Decision:** Apply stable sigmoid normalization $\sigma(s) = \frac{1}{1 + e^{-s}}$ to cross-encoder raw logits to yield scores in $[0, 1]$, where neutral relevance ($s = 0$) maps cleanly to $0.5$, matching `settings.RERANK_THRESHOLD = 0.5`. Both the normalized score and raw logit are tracked in telemetry. If the top score is below `RERANK_THRESHOLD` or no candidates are retrieved, Layer 1 immediately halts the pipeline and returns a structured fallback response.
 - **Rationale:** Prevents ungrounded hallucination early in the pipeline without spending expensive generation tokens on queries outside the knowledge base.
-- **Traceability:** Architecture §6.4, §6.7, Prompt 3.
+- **Traceability:** Architecture §6.4, §6.7, Prompt 3.---
 
+## 2026-10-06: Phase 4 (First Half) - Router, Memory, Canned Replies, Session Management
 
+### D-017: Dynamic KB_TOPIC Configuration and Formatted Greeting Message
+- **Decision:** Introduce `KB_TOPIC` (default: `"the knowledge base"`) in `app/core/config.py` and `.env.example`. Update the configuration validator to automatically format `GREETING_MESSAGE` with `KB_TOPIC` (replacing either `{KB_TOPIC}` or `[KB topic]`) when not explicitly customized.
+- **Rationale:** Gives deployments an effortless, single-setting method to tailor chatbot scope and personality without hardcoding prompts across services.
+- **Traceability:** Architecture §6.2, §12, Prompt 4.
+
+### D-018: Redis Session Management with Sliding TTL and Resilience to Redis Outages
+- **Decision:** Implement `SessionManager` storing messages in Redis lists (`session:{user_id}:{session_id}`) trimmed to `HISTORY_MESSAGES` with `LTRIM`, tracked in a per-user sorted set (`user_sessions:{user_id}`) with timestamps, and refreshed with sliding TTL (`SESSION_TTL_HOURS`) on every interaction. If Redis is unavailable or raises connection errors, log warnings and fail gracefully without crashing or failing user requests.
+- **Rationale:** Ensures privacy, user isolation, bounded memory footprints, and high availability even when Redis is down.
+- **Traceability:** Architecture §5, §8, Prompt 4.
+
+### D-019: Fast Intent Router with JSON Schema Validation, Single Retry, and Fail-Open SEARCH
+- **Decision:** Implement `IntentRouter` using the FAST LLM role (`gemini-3.1-flash-lite`), enforcing strict JSON schema `{intent, clarification_message, standalone_query}` via Pydantic. If JSON parsing fails, perform a single immediate correction prompt retry. If parsing still fails or an unhandled LLM error occurs, fail-open to `intent="search"` with the user's raw message. Pure greetings return `GREETING_MESSAGE` with zero retrieval or generation costs; ambiguous inputs ask for clarification; and follow-up queries with coreferences (e.g. "what is its role?") are rewritten into self-contained search queries using recent conversation history while strictly excluding prior fallback/out-of-domain messages.
+- **Rationale:** Minimizes latency and token costs on conversational niceties while ensuring conversational queries never fail or block the user when classification is uncertain.
+- **Traceability:** Architecture §6.1, §6.2, Prompt 4.

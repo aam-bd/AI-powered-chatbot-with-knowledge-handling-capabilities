@@ -1,6 +1,7 @@
 """Pydantic schemas for authentication, users, and standardized API responses."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
@@ -92,4 +93,51 @@ class DocumentAcceptedResponse(BaseModel):
     task_id: Optional[str] = None
     status: str = "accepted"
     message: str
+
+
+# ------------------------------------------------------------------------------
+# Chat & Conversation Memory Schemas (Phase 4)
+# ------------------------------------------------------------------------------
+
+class MessageKind(str, Enum):
+    """Kind marker for conversation turns to prevent treating fallbacks as knowledge."""
+    NORMAL = "normal"
+    FALLBACK = "fallback"
+    CLARIFY = "clarify"
+
+
+class ChatMessage(BaseModel):
+    """Individual turn stored in Redis session memory."""
+    role: str  # "user" | "assistant"
+    content: str
+    kind: MessageKind = MessageKind.NORMAL
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SessionSummaryResponse(BaseModel):
+    """Summary representation of an active chat session."""
+    session_id: str
+    message_count: int
+    last_message_preview: Optional[str] = None
+    updated_at: datetime
+
+
+class SessionDeleteResponse(BaseModel):
+    """Response returned upon clearing a session."""
+    detail: str
+    session_id: str
+
+
+class RouterIntent(str, Enum):
+    """Possible intent classifications produced by the intent router."""
+    GREETING = "GREETING"
+    CLARIFY = "CLARIFY"
+    SEARCH = "SEARCH"
+
+
+class RouterDecision(BaseModel):
+    """JSON output schema produced by the FAST model and validated with Pydantic."""
+    intent: RouterIntent
+    clarification_message: Optional[str] = None
+    standalone_query: Optional[str] = None
 

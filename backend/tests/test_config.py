@@ -36,10 +36,26 @@ def test_section_12_settings_presence():
         "HISTORY_MESSAGES", "SESSION_TTL_HOURS", "MAX_UPLOAD_MB",
         "ALLOWED_URL_DOMAINS", "ADMIN_EMAIL", "ADMIN_PASSWORD",
         "ENABLE_OCR", "RECONCILE_STALE_MINUTES", "ACCESS_TOKEN_MINUTES",
-        "CORS_ORIGINS", "FALLBACK_MESSAGE", "GREETING_MESSAGE"
+        "CORS_ORIGINS", "FALLBACK_MESSAGE", "GREETING_MESSAGE", "KB_TOPIC"
     ]
     for attr in expected_attrs:
         assert hasattr(cfg, attr), f"Missing setting {attr} from architecture §12"
+
+
+def test_kb_topic_and_greeting_message(monkeypatch):
+    """Verify that KB_TOPIC is dynamically formatted into GREETING_MESSAGE."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("FAST_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("ANSWER_LLM_API_KEY", raising=False)
+
+    cfg = Settings(KB_TOPIC="quantum computing", GREETING_MESSAGE=None, _env_file=None)
+    assert "quantum computing" in cfg.GREETING_MESSAGE
+    assert cfg.GREETING_MESSAGE == "Hi! I can answer questions about quantum computing. What would you like to know?"
+
+    # Explicit override preserves custom message
+    custom = "Welcome to the custom support assistant!"
+    cfg_custom = Settings(KB_TOPIC="crypto", GREETING_MESSAGE=custom, _env_file=None)
+    assert cfg_custom.GREETING_MESSAGE == custom
 
 
 def test_secrets_never_printed():

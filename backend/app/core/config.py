@@ -88,14 +88,13 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------------------
     # Conversation Memory & Messaging
     # --------------------------------------------------------------------------
+    KB_TOPIC: str = "the knowledge base"
     HISTORY_MESSAGES: int = 6
     SESSION_TTL_HOURS: int = 24
     FALLBACK_MESSAGE: str = (
         "I'm sorry, I couldn't find information about that in my knowledge base."
     )
-    GREETING_MESSAGE: str = (
-        "Hi! I can answer questions about the knowledge base. What would you like to know?"
-    )
+    GREETING_MESSAGE: Optional[str] = None
 
     # --------------------------------------------------------------------------
     # Validators
@@ -166,6 +165,10 @@ class Settings(BaseSettings):
                 f"RERANK_TOP_N ({self.RERANK_TOP_N}) cannot exceed "
                 f"RETRIEVAL_TOP_K ({self.RETRIEVAL_TOP_K})"
             )
+        if not self.GREETING_MESSAGE or "{KB_TOPIC}" in self.GREETING_MESSAGE or "[KB topic]" in self.GREETING_MESSAGE:
+            template = self.GREETING_MESSAGE or "Hi! I can answer questions about {KB_TOPIC}. What would you like to know?"
+            template = template.replace("[KB topic]", "{KB_TOPIC}")
+            self.GREETING_MESSAGE = template.format(KB_TOPIC=self.KB_TOPIC)
         return self
 
     # --------------------------------------------------------------------------

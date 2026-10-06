@@ -3,8 +3,8 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 
 ## Current status
 - Current phase: 4 (Router, memory, generation, citations, SSE chat)
-- Last completed task: Prompt 3: Hybrid retrieval, reranking, and Layer 1 fallback
-- Next task: Prompt 4: Router, memory, generation, citations and streaming
+- Last completed task: Prompt 4 (First Half): Session manager, intent router, canned replies, session APIs
+- Next task: Prompt 4 (Second Half): Generation, sentinel [[NOT_FOUND]], citations drawer, retract, POST /chat/stream, query_logs
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -12,7 +12,7 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 1.5 LLM provider layer (OpenAI-compatible and Anthropic adapters)
 - [x] 2 Embeddings, parsers, ingestion, document lifecycle
 - [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
-- [ ] 4 Router, memory, generation, citations, SSE chat
+- [ ] 4 Router, memory, generation, citations, SSE chat (First Half complete: Router, Memory, Canned Replies, Session APIs)
 - [ ] 5 Frontend (login, chat, admin)
 - [ ] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
@@ -22,6 +22,8 @@ C1 [x]  C2 [x]  C3 [ ]  G1 [ ]  G2 [ ]  G3 [ ]  G4 [ ]
 G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-06: Introduced `KB_TOPIC` setting and auto-formatting into `GREETING_MESSAGE` in `app/core/config.py` and `.env.example`.
+- 2026-10-06: Implemented `_LazyRedisProxy` in `app/db/redis.py` caching clients per running asyncio event loop ID to cleanly support pytest-asyncio test runner execution while preserving zero-connection-overhead proxy semantics.
 - 2026-10-05: Upgraded Qdrant to `v1.11.0` in `docker-compose.yml` to support the native Universal Query API (`query_points` with `prefetch` on dense and sparse vectors and `FusionQuery(fusion=Fusion.RRF)`).
 - 2026-10-05: Mapped `BAAI/bge-reranker-v2-m3` in `CrossEncoderSingleton` to FastEmbed's ONNX CPU model `BAAI/bge-reranker-base` for fast CPU evaluation without PyTorch GPU bloat.
 - 2026-10-05: Applied stable sigmoid normalization $\sigma(s) = \frac{1}{1 + e^{-s}}$ to cross-encoder raw logits to map scores to $[0, 1]$, making `RERANK_THRESHOLD = 0.5` the natural neutral boundary, while preserving raw logits in telemetry.
@@ -31,9 +33,37 @@ G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [ ]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 3.
+- None from Phase 4 (First Half).
 
 ## Session log (newest first)
+### 2026-10-06, Phase 4 (First Half: Router, Memory, Canned Replies, Session Management)
+- Done:
+  - Added `KB_TOPIC` (default: `"the knowledge base"`) to `Settings` in `app/core/config.py` and updated validator to dynamically format `GREETING_MESSAGE`. Updated `.env.example` with `KB_TOPIC=blockchain and cryptocurrencies`.
+  - Added `MessageKind` enum (`NORMAL`, `FALLBACK`, `CLARIFY`), `ChatMessage` schema, `SessionSummaryResponse`, `SessionDeleteResponse`, `RouterIntent` enum, and `RouterDecision` schema in `app/models/schemas.py`.
+  - Upgraded `app/db/redis.py` with loop-aware `_LazyRedisProxy` to dynamically retrieve clients bound to the active `asyncio.get_running_loop()`, preventing closed-loop connection errors across isolated `pytest-asyncio` fixtures.
+  - Implemented `SessionManager` in `app/services/session_manager.py`:
+    - Stores messages in Redis lists (`session:{user_id}:{session_id}`) capped to `HISTORY_MESSAGES` with `LTRIM`.
+    - Tracks sessions per user in Redis sorted sets (`user_sessions:{user_id}`) with epoch timestamp scores.
+    - Sets sliding expiration (`SESSION_TTL_HOURS`) refreshed on every interaction.
+    - Preserves `kind` metadata tags on each message (e.g. `fallback`, `clarify`, `normal`).
+    - Implemented `list_sessions()` and `clear_session()`.
+    - Resilient degradation: catches Redis exceptions and logs warnings without interrupting application requests.
+  - Implemented `IntentRouter` in `app/services/intent_router.py`:
+    - Dispatches to FAST LLM (`gemini-3.1-flash-lite`).
+    - Classifies queries into `GREETING`, `CLARIFY`, or `SEARCH`.
+    - Returns canned `settings.GREETING_MESSAGE` for pure greetings.
+    - Asks for clarification when query is ambiguous or insufficient.
+    - Rewrites follow-up queries with coreferences (e.g. pronouns) into standalone search queries using preceding conversation history while strictly ignoring prior `FALLBACK` responses to avoid topic drift.
+    - Validates strict JSON output; performs single correction retry on invalid JSON syntax; fails open to `intent="search"` with raw input on persistent errors or LLM outages.
+  - Implemented Chat Session endpoints in `app/api/v1/chat.py`:
+    - `GET /api/v1/chat/sessions`: Lists sessions for authenticated user.
+    - `DELETE /api/v1/chat/sessions/{session_id}`: Clears session history and unlinks from user set with strict 404 on unowned/non-existent sessions.
+  - Implemented automated test suites:
+    - `tests/test_router.py` (8 tests): Tests pure greeting, mixed greeting+question, clarification, history rewrite, fallback omission from history context, JSON retry recovery, JSON fail-open, and LLM exception fail-open.
+    - `tests/test_sessions.py` (6 tests): Tests history cap trimming, sliding TTL extension, message kind preservation, user ownership isolation, API endpoints (`GET` and `DELETE`) with full JWT authentication, and Redis connection failure graceful degradation.
+- Tests run and results:
+  - `docker compose exec api pytest tests/ -v`: All 63 tests passed (100% pass across all test suites in the repository).
+
 ### 2026-10-05, Phase 3 (Hybrid Retrieval, Reranking, and Layer 1 Fallback)
 - Done:
   - Upgraded Qdrant to `v1.11.0` in `docker-compose.yml` to support the native Universal Query API with dense and sparse prefetch and Reciprocal Rank Fusion (RRF).
