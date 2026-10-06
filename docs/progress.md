@@ -3,8 +3,8 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 
 ## Current status
 - Current phase: 5 (Frontend: login, chat, admin)
-- Last completed task: Prompt 4: Router, memory, generation, citations and streaming (Phase 4 Complete)
-- Next task: Prompt 5: Frontend (Next.js App Router, TypeScript, Tailwind)
+- Last completed task: Prompt 5 (First Half): Next.js project, Dockerfile & compose service, auth/login with auto-refresh, role-aware routing, streaming chat, citations drawer, and session management
+- Next task: Prompt 5 (Second Half): Admin page (AdminDocManager with upload, URL ingestion, status polling, versioning, delete)
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -13,15 +13,17 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 2 Embeddings, parsers, ingestion, document lifecycle
 - [x] 3 Hybrid retrieval, rerank, Layer 1 fallback
 - [x] 4 Router, memory, generation, citations, SSE chat
-- [ ] 5 Frontend (login, chat, admin)
+- [ ] 5 Frontend (login, chat [x], admin [ ])
 - [ ] 6 Evaluation and threshold calibration
 - [ ] 7 Audit, hardening, README
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [ ]  G4 [x]
-G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
+G5 [x]  G6 [x]  G7 [x]  S1 [ ]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-06: Configured Next.js 14 standalone output (`output: 'standalone'`) in multi-stage Alpine Dockerfile with unprivileged `nextjs` user and Node HTTP healthcheck in `docker-compose.yml`.
+- 2026-10-06: Implemented fetch-based SSE parser in `streamChat.ts` passing `Authorization: Bearer <token>` and parsing `token`, `citations`, `retract`, `error`, and `done` events with automatic token refresh on 401.
 - 2026-10-06: Implemented Layer 2 sentinel buffer window (15 characters) in `app/services/generation_service.py` ensuring multi-token split sentinels (`["[[", "NOT_", "FOUND]]"]`) abort generation without leaking tokens.
 - 2026-10-06: Implemented Layer 3 citation validator in `app/services/citation_service.py` extracting `[Cn]` tags, pruning hallucinated tags, and sending `retract` SSE event when answers lack grounding.
 - 2026-10-06: Introduced `KB_TOPIC` setting and auto-formatting into `GREETING_MESSAGE` in `app/core/config.py` and `.env.example`.
@@ -35,9 +37,33 @@ G5 [ ]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - 2026-10-05: Selected `gemini-3.1-flash-lite` for Google AI Studio Free Tier OpenAI-compatible endpoint due to low latency, fast response, and zero capacity throttle errors under free tier limits.
 
 ## Known issues / TODO
-- None from Phase 4.
+- Phase 5 Second Half: Implement AdminDocManager (file and URL ingest, polling table, version update, delete) and verify non-admin access restrictions.
 
 ## Session log (newest first)
+### 2026-10-06 - Prompt 5 (First Half): Frontend Architecture, Auth & Real-Time Chat
+- **Goal:** Carry out the first half of Prompt 5: Next.js project with Dockerfile, docker-compose service, NEXT_PUBLIC_API_URL, login page with auto-refresh, role-aware routing via GET /auth/me, and real-time streaming chat interface with citations drawer.
+- **Files Created/Modified:**
+  - `frontend/Dockerfile`: Multi-stage Alpine container with standalone output.
+  - `docker-compose.yml`: Frontend service with build args, env, and node healthcheck.
+  - `frontend/tsconfig.json`, `frontend/next.config.mjs`, `frontend/tailwind.config.ts`, `frontend/postcss.config.js`.
+  - `frontend/src/app/globals.css`: Dark aesthetic tokens, glassmorphism panels, custom scrollbars.
+  - `frontend/src/types/chat.ts`: Interfaces for messages, citations, sessions, auth, and stream events.
+  - `frontend/src/services/api.ts`: Token storage, proactive/reactive automatic refresh, sessions API.
+  - `frontend/src/services/streamChat.ts`: Fetch-based SSE parser (token, citations, retract, error, done).
+  - `frontend/src/context/AuthContext.tsx`: React AuthContext provider with role resolution and auto-refresh.
+  - `frontend/src/app/layout.tsx`: Root layout with AuthProvider and metadata.
+  - `frontend/src/components/LoginForm.tsx` & `frontend/src/app/login/page.tsx`: Glassmorphism login UI with demo admin filler.
+  - `frontend/src/components/CitationsDrawer.tsx`: Slide-over source provenance drawer.
+  - `frontend/src/components/SessionControls.tsx`: Collapsible sidebar with session list, new chat, and user profile.
+  - `frontend/src/components/ChatWindow.tsx`: Real-time streaming chat, message bubbles, citation badges, disabled input during stream, error banners.
+  - `frontend/src/app/page.tsx`: Protected chat route with session lifecycle management.
+  - `frontend/scripts/test_frontend_flow.mjs`: Automated integration test verifying login, auto-refresh, session management, and SSE chat stream.
+  - `docs/decisions.md`: Recorded D-023 and D-024.
+  - `docs/progress.md`: Updated status, decisions, and session log.
+- **Verification:**
+  - `docker compose build frontend`: Built successfully with Next.js standalone compilation.
+  - `docker compose up -d frontend`: `chatbot-frontend` is Up and healthy on port 3000.
+  - `node frontend/scripts/test_frontend_flow.mjs`: 100% verified all pages (`/login`, `/`), admin login, automatic token refresh, session list, SSE token streaming, citation tags (`[C1]` pointing to `CSE446 Lecture 2.pdf`), and session deletion.
 ### 2026-10-06, Phase 4 (Second Half: Generation, Sentinel Buffering, Layer 3 Citations, SSE Stream, Telemetry)
 - Done:
   - Added `SYSTEM_ERROR_MESSAGE` to `app/core/config.py`.

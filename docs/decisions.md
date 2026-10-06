@@ -135,3 +135,18 @@ This document records key architectural and design decisions made throughout dev
 - **Decision:** Implement `POST /api/v1/chat/stream` using HTTP `text/event-stream` with typed events (`token`, `citations`, `retract`, `error`, `done`). Asynchronously insert a record into the `query_logs` table for every turn, recording original and standalone queries, intent, top scores, threshold, fallback layer, cited chunk IDs, and per-stage latencies (router, retrieval, rerank, generation).
 - **Rationale:** Complies with Architecture §6.8 SSE streaming protocol and §10 telemetry requirements for end-to-end observability and prompt evaluation.
 - **Traceability:** Architecture §6.8, §7, §10, Prompt 4.
+
+---
+
+## 2026-10-06: Phase 5 (First Half) - Frontend Architecture, Auth & Real-Time Chat
+
+### D-023: Next.js Standalone Container Packaging and Fetch-Based SSE Streaming
+- **Decision:** Deploy Next.js 14 App Router with `output: 'standalone'` in a multi-stage Alpine Node container (`Dockerfile`). In `streamChat.ts`, implement streaming using `fetch` with `ReadableStream` instead of the browser's native `EventSource`.
+- **Rationale:** Native `EventSource` cannot send custom headers (such as `Authorization: Bearer <token>`). Fetch-based streaming allows passing Bearer JWT tokens securely while processing real-time SSE chunks (`token`, `citations`, `retract`, `error`, `done`). Standalone Next.js packaging drastically reduces container footprint and cold-start latency.
+- **Traceability:** Architecture §2, §6.8, §11, Prompt 5.
+
+### D-024: Proactive and Reactive JWT Token Refresh with Role-Aware Route Protection
+- **Decision:** Store access and refresh tokens with expiration timestamps. Refresh proactively if access token expires within 60 seconds, and refresh reactively if any request receives HTTP 401. Resolve roles via `GET /api/v1/auth/me`. Guard `/` to redirect unauthenticated users to `/login`.
+- **Rationale:** Prevents user interruptions during active conversations when short-lived access tokens (30m) expire, while strictly protecting user sessions and displaying role badges.
+- **Traceability:** Architecture §8, §9.1, §11, Prompt 5.
+
