@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     JWT_SECRET_KEY: SecretStr = SecretStr("default-insecure-secret-key-change-in-production")
     ACCESS_TOKEN_MINUTES: int = 30
+    PASSWORD_MIN_LENGTH: int = 10
     CORS_ORIGINS: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
     # --------------------------------------------------------------------------

@@ -48,11 +48,13 @@ def create_access_token(user_id: str, role: str, expires_delta: Optional[timedel
 
 
 def create_refresh_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
-    """Generate a signed long-lived JWT refresh token (default 7 days)."""
+    """Generate a signed long-lived JWT refresh token (default 7 days) with unique jti ID."""
     now = datetime.now(timezone.utc)
     exp = now + (expires_delta or timedelta(days=7))
+    token_id = str(uuid.uuid4())
     payload = {
         "sub": str(user_id),
+        "jti": token_id,
         "type": "refresh",
         "iat": now,
         "exp": exp,

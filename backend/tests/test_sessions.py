@@ -154,6 +154,7 @@ async def test_chat_sessions_api_endpoints(client: TestClient, session_manager: 
     assert r1.status_code == 201
     user_id_1 = str(r1.json()["id"])
     l1 = client.post("/api/v1/auth/login", json={"email": email_1, "password": pwd})
+    assert l1.status_code == 200, f"Login failed for user 1: {l1.text}"
     token_1 = l1.json()["access_token"]
 
     email_2 = f"user2_{uuid.uuid4().hex[:8]}@example.com"
@@ -161,6 +162,7 @@ async def test_chat_sessions_api_endpoints(client: TestClient, session_manager: 
     assert r2.status_code == 201
     user_id_2 = str(r2.json()["id"])
     l2 = client.post("/api/v1/auth/login", json={"email": email_2, "password": pwd})
+    assert l2.status_code == 200, f"Login failed for user 2: {l2.text}"
     token_2 = l2.json()["access_token"]
 
     sess_1 = f"api-sess-1-{uuid.uuid4().hex[:6]}"

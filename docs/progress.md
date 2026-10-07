@@ -2,9 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7 (Audit, hardening, and README - Complete)
-- Last completed task: Prompt 7: Audit, hardening and README (Requirements traceability audit, security review, clean start verification, final test/eval benchmarks, production README.md)
-- Status: Project Complete (Phases 0–7 100% Implemented and Verified)
+- Current phase: 7b (Security fixes, registration and account features - Complete)
+- Last completed task: Prompt 7b: Security fixes, registration and account features (Removed all demo credentials, implemented registration UI, logout token revocation via Redis, change-password API and account UI, HTTP security headers, and automated credential check tests)
+- Next up: Prompt 7c: Persistent chat history (chat_sessions, chat_messages, history sidebar)
+- Status: Phase 7b Complete, 82/82 Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -15,7 +16,11 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 4 Router, memory, generation, citations, SSE chat
 - [x] 5 Frontend (login, chat, admin)
 - [x] 6 Evaluation and threshold calibration
-- [x] 7 Audit, hardening, README
+- [x] 7a Full Audit (docs/audit.md)
+- [x] 7b Security fixes, registration and account features
+- [ ] 7c Persistent chat history
+- [ ] 7d Admin user management
+- [ ] 7e Final evaluation, README and clean start
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
@@ -44,6 +49,34 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-07 - Prompt 7b: Security Fixes, Registration and Account Features (Phase 7b Complete)
+- **Goal:** Carry out Prompt 7b: Address Critical and High security findings from `docs/audit.md`, purge demo credentials and fill controls, enforce password policies, implement registration and account management flows, configure security headers, and add regression test suites.
+- **Files Created/Modified:**
+  - `backend/app/core/config.py`: Added `PASSWORD_MIN_LENGTH: int = 10`.
+  - `backend/app/models/schemas.py`: Updated `UserRegisterRequest` with `min_length=10`, added `ChangePasswordRequest` and `MessageResponse`.
+  - `backend/app/core/security.py`: Generated UUID `jti` in `create_refresh_token()`.
+  - `backend/app/api/v1/auth.py`: Added password minimum length check on registration, token revocation check on refresh, implemented `POST /auth/logout` (revoking refresh token via Redis key `revoked:{jti}` with remaining TTL), and implemented `POST /auth/change-password` (verifying current password and hashing new password).
+  - `backend/app/main.py`: Added HTTP security headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`).
+  - `backend/eval/run_eval.py`: Removed hardcoded default password fallback from argument parser.
+  - `backend/tests/test_config.py`: Added `PASSWORD_MIN_LENGTH` assertion.
+  - `backend/tests/test_auth.py`: Added test cases for weak password rejection (422), refresh token revocation on logout (401 on refresh), and password change invalidating old password.
+  - `backend/tests/test_no_demo_credentials.py`: Created test suite verifying absence of demo buttons in `LoginForm.tsx`, absence of default passwords in `README.md` and `.env.example`, and password length configuration.
+  - `frontend/src/components/LoginForm.tsx`: Purged `handleFillDemoAdmin()`, demo state setter, and demo fill button; added clean link to `/register`.
+  - `frontend/src/app/register/page.tsx` & `frontend/src/components/RegisterForm.tsx`: Created registration page with client-side validation, password length checks, role fixed to `user`, and automatic login on submission.
+  - `frontend/src/app/account/page.tsx` & `frontend/src/components/AccountView.tsx`: Created account view with profile information display and password change form.
+  - `frontend/src/components/SessionControls.tsx`: Added link to `/account`.
+  - `frontend/src/services/api.ts`: Added API client methods `registerUser()`, `logoutUser()`, and `changePassword()`.
+  - `frontend/src/context/AuthContext.tsx`: Updated `logout()` to call `logoutUser()` to revoke refresh token before clearing local state.
+  - `frontend/next.config.mjs`: Added HTTP response security headers (`Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`).
+  - `frontend/scripts/test_admin_flow.mjs` & `frontend/scripts/test_frontend_flow.mjs`: Removed hardcoded credentials in favor of environment variables.
+  - `README.md` & `.env.example`: Removed default passwords and replaced with placeholders.
+  - `docker-compose.yml`: Added volume mounts for `/app/frontend`, `/app/README.md`, and `/app/.env.example` in `api` container.
+- **Verification:**
+  - Automated tests: 82/82 tests passing (`pytest tests/ -v`).
+  - Container build: Next.js standalone production build generated cleanly with zero errors.
+  - Grep verification: 0 occurrences of demo credentials or fill controls in tracked repo files or `.next/static` production bundle.
+  - HTTP headers verified on both frontend (:3000) and API (:8000).
+
 ### 2026-10-06 - Prompt 7: Audit, Hardening and README (Phase 7 Complete - Project Complete)
 - **Goal:** Carry out Prompt 7: Audit the entire project against architecture requirements and traceability matrix (C1–C3, G1–G7, S1–S3), perform security checks against Section 9, run full test suite and live evaluations, verify clean start workflow, author production-grade `README.md`, and finalize `docs/decisions.md`.
 - **Files Created/Modified:**

@@ -144,6 +144,21 @@ export async function fetchWithAuth(
   return response;
 }
 
+export async function registerUser(email: string, password: string): Promise<User> {
+  const res = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+    throw new Error(err.detail || 'Registration failed');
+  }
+
+  return res.json();
+}
+
 export async function loginUser(email: string, password: string): Promise<TokenResponse> {
   const res = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
@@ -159,6 +174,37 @@ export async function loginUser(email: string, password: string): Promise<TokenR
   const tokens: TokenResponse = await res.json();
   setTokens(tokens);
   return tokens;
+}
+
+export async function logoutUser(): Promise<void> {
+  const refreshTokenVal = getRefreshToken();
+  if (refreshTokenVal) {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshTokenVal }),
+      });
+    } catch {
+      // Ignore network errors on logout
+    }
+  }
+  clearTokens();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await fetchWithAuth('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update password' }));
+    throw new Error(err.detail || 'Failed to update password');
+  }
 }
 
 export async function getCurrentUser(): Promise<User> {

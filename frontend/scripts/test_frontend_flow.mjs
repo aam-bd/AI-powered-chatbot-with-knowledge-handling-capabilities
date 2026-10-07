@@ -23,8 +23,8 @@ async function testFrontendFlow() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email: 'admin@example.com',
-      password: 'AdminPassword123!',
+      email: process.env.ADMIN_EMAIL || process.env.TEST_ADMIN_EMAIL,
+      password: process.env.ADMIN_PASSWORD || process.env.TEST_ADMIN_PASSWORD,
     }),
   });
   console.log(`   POST ${API_BASE}/auth/login -> HTTP ${loginApiRes.status}`);

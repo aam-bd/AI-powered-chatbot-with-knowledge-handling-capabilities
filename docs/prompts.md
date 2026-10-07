@@ -2,7 +2,7 @@
 
 Save this as `docs/prompts.md`. Run the prompts in order, one per Planning-mode task. Read each plan before approving it, run the acceptance checks yourself, and commit after every phase.
 
-**Order:** Setup → 0 → 1 → 1.5 → 2 → 3 → 4 → 5 → 6 → 7
+**Order:** Setup → 0 → 1 → 1.5 → 2 → 3 → 4 → 5 → 6 → 7a → 7b → 7c → 7d → 7e
 
 ---
 
@@ -52,7 +52,11 @@ Read docs/architecture.md and docs/progress.md. Tell me in 3 lines where we are,
 - [ ] 4 Router, memory, generation, citations, SSE chat
 - [ ] 5 Frontend (login, chat, admin)
 - [ ] 6 Evaluation and threshold calibration
-- [ ] 7 Audit, hardening, README
+- [ ] 7a Full audit (no code changes), docs/audit.md
+- [ ] 7b Security fixes, registration, logout, change password
+- [ ] 7c Persistent chat history
+- [ ] 7d Admin user management
+- [ ] 7e Final eval, README, clean start
 ```
 
 ---
@@ -224,18 +228,81 @@ Then verify every expected answer against the source documents before using the 
 
 ---
 
-## Prompt 7: Audit, hardening and README
+## Prompt 7a: Full audit (no code changes)
 
 ```text
-Task: Phase 7, audit, hardening and README.
+Task: Phase 7a, full audit. Do NOT change any code in this task. Create docs/audit.md.
 
-1. Audit the whole project against docs/architecture.md and the original requirements (core 1-3, good-to-have 1-7, system 1-3, traceability table in section 1.1). For each item name the file and the test that satisfies it, and list any gap. Fix the gaps.
-2. Security check against section 9: confirm no secrets in the repo or git history, .env is ignored, .env.example is complete, API keys never appear in logs or responses, admin routes all require admin, uploads and URL ingestion are validated, CORS is restricted.
-3. Run the full test suite and the evaluation (calibrate first on the calibration set, then run the test set), and record the real results.
-4. Verify a clean start: from a fresh clone with only .env created from .env.example, docker compose up works and the documented steps lead to a working chat.
-5. Write README.md: overview, architecture diagram, setup and environment variables (including LLM provider presets), how to seed the admin, supported formats and limits (with scanned PDF and table caveats), running tests and evaluation, the API overview with a link to /docs, evaluation results with failures discussed honestly, and known limitations. Fill docs/decisions.md with the main design decisions.
+Audit the whole project against docs/architecture.md (including the updated sections 4.1, 7, 8, 9 and 11), the original requirements (core 1-3, good-to-have 1-7, system 1-3, extensions E1-E3) and the checklist below. For each finding give: severity (Critical / High / Medium / Low), file and line, what is wrong, and the proposed fix.
 
-Acceptance: show me the gap list before fixing, the final test and eval output, and the README.
+Checklist:
+1. Secrets and demo credentials: search the frontend, backend, README, .env.example, docker-compose.yml, scripts and tests for hardcoded or prefilled credentials, "demo", "admin@", default passwords and default JWT secrets. Check the built frontend bundle too. Search the git history (git log -S) for any real secret. A "fill demo admin credentials" control or any default admin login is Critical.
+2. Authentication flows: registration UI, role always "user", login, logout (does it revoke the refresh token?), refresh, change password, password policy, token storage, generic error messages.
+3. Authorization: every admin route and admin page requires admin; conversation ownership; no way to escalate.
+4. Chat history: is it persisted per user across logout and login? Where, and for how long? Can one user read another's history?
+5. Every requirement in architecture section 1.1: file, test and evidence.
+6. Security items in section 9: uploads, SSRF, injection, rate limits, CORS, security headers, secrets in logs.
+7. Tests: run the whole suite twice; list untested features, skipped and flaky tests.
+8. Dependencies: run pip-audit and npm audit and summarize.
+9. UX gaps: missing pages, empty and error states, stop-generation, markdown rendering, accessibility basics, mobile layout.
+10. Operations: clean start from a fresh clone, health checks, log rotation, backups note, README completeness.
+
+Finish with a prioritized fix list. Show me docs/audit.md.
+```
+
+---
+
+## Prompt 7b: Security fixes, registration and account features
+
+```text
+Task: Phase 7b. Read docs/audit.md and architecture sections 8, 9.1 and 11. Fix every Critical and High security finding first, then implement:
+1. Remove ALL demo or prefilled credentials and any "fill demo admin credentials" control from the frontend, README and examples. The login page contains only a normal form. Admin credentials come only from ADMIN_EMAIL and ADMIN_PASSWORD in .env (placeholders in .env.example). Tell me exactly which secrets I must rotate by hand if any were ever committed.
+2. A registration page (RegisterForm) at /register, linked from login and back: email, password and confirm password, client-side validation, clear server errors, PASSWORD_MIN_LENGTH enforced server-side, role always user, then redirect to login or sign in automatically.
+3. POST /auth/logout that revokes the refresh token (revocation marker in Redis keyed by token id, TTL equal to the remaining lifetime). The frontend calls it on logout and clears all client state.
+4. POST /auth/change-password (current password required) and a small account page in the frontend.
+5. Security headers on the frontend (Content-Security-Policy, X-Content-Type-Options, Referrer-Policy, frame protection) and on the API where relevant.
+
+Tests: registration cannot create an admin, weak passwords are rejected, logout makes the refresh token unusable, changing the password invalidates the old one, and tests/test_no_demo_credentials.py fails if demo credentials or default secrets appear in the repo. Run all tests.
+Acceptance: show me the test output, the login page without any demo control, and the grep output proving no credentials in the repo or the built bundle.
+```
+
+---
+
+## Prompt 7c: Persistent chat history
+
+```text
+Task: Phase 7c, persistent chat history. Read architecture sections 4.1 (chat_sessions, chat_messages), 7, 8 and 11 (they were updated). Implement:
+- Alembic migration and models for chat_sessions and chat_messages.
+- POST /chat/stream saves the user message before generation and the assistant message (text, citations, kind, fallback_layer) after the stream ends; a retract stores the fallback text; failures never store partial text as an answer. An unknown session_id creates a session for the current user; a session owned by someone else returns 404. Title = first user message truncated to 60 characters.
+- GET /chat/sessions (newest first), GET /chat/sessions/{id}/messages, PATCH /chat/sessions/{id} (rename), DELETE /chat/sessions/{id} (PostgreSQL and the Redis key). All owner-only.
+- The Redis window stays the router's source; rebuild it from PostgreSQL when it is missing or Redis is down.
+- Frontend: ChatHistorySidebar listing conversations; opening one restores the messages and citation chips; rename; delete with confirmation; new chat; history persists after logout and login.
+
+Tests (tests/test_chat_history.py): history survives a new login, owner-only access (404 for others), messages restored with citations, retract stored correctly, delete removes everything, Redis flushed then history rebuilt. Run them.
+Acceptance: log in, chat, log out, log in again, and the conversation is there with working citations; a second user cannot see it. Give me screenshots if you can use the browser.
+```
+
+---
+
+## Prompt 7d: Admin user management (recommended)
+
+```text
+Task: Phase 7d, user management. Read architecture sections 8, 9.1 and 11. Implement GET /users and PATCH /users/{id} (change role, activate or deactivate), admin only. Rules: an admin cannot demote or deactivate themselves; the last active admin cannot be demoted or deactivated; deactivated users cannot log in or refresh; every change is logged without secrets. Frontend: an AdminUsers tab on the admin page with a users table and role change and activate/deactivate with confirmation.
+Tests (tests/test_users_admin.py): the rules above plus 403 for normal users. Run them.
+```
+
+---
+
+## Prompt 7e: Final evaluation, README and clean start
+
+```text
+Task: Phase 7e, wrap-up.
+1. Run the full test suite and the evaluation (calibrate on the calibration set, then run the test set). Record the real results in docs/eval-report.md, including failures.
+2. Verify a clean start from a fresh clone with only .env created from .env.example: docker compose up works, the admin is seeded from .env, a new user can register, documents upload through the UI, and chat works with history kept after logout.
+3. Write README.md: overview, architecture diagram, setup, environment variables (with LLM provider presets), seeding the admin, registration, supported formats and limits, a privacy note (what is stored: chat history and query logs), running tests and evaluation, API overview with a /docs link, evaluation results, known limitations, and a short demo script (upload, ask, update the document, ask again, delete, ask again).
+4. Fill docs/decisions.md.
+5. Update docs/audit.md so every finding is marked fixed or accepted with a reason.
+Acceptance: show me the final test and eval output and the README.
 ```
 
 ---

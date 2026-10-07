@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { SessionSummary } from '@/types/chat';
 import {
@@ -12,6 +13,7 @@ import {
   User as UserIcon,
   Clock,
   Sparkles,
+  KeyRound,
 } from 'lucide-react';
 
 interface SessionControlsProps {
@@ -181,13 +183,22 @@ export default function SessionControls({
               </div>
             </div>
 
-            <button
-              onClick={logout}
-              className="p-2 rounded-lg text-gray-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/account"
+                className="p-2 rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                title="Account Settings & Password"
+              >
+                <KeyRound className="w-4 h-4" />
+              </Link>
+              <button
+                onClick={logout}
+                className="p-2 rounded-lg text-gray-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

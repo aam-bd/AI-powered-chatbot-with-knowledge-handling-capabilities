@@ -73,6 +73,17 @@ app.add_middleware(
 )
 
 
+# Security Headers Middleware per architecture §9
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Enforce standard HTTP security headers on all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 # Standardized error handler per architecture §8: { "detail": "...", "code": "..." }
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):

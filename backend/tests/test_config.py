@@ -36,7 +36,7 @@ def test_section_12_settings_presence():
         "HISTORY_MESSAGES", "SESSION_TTL_HOURS", "MAX_UPLOAD_MB",
         "ALLOWED_URL_DOMAINS", "ADMIN_EMAIL", "ADMIN_PASSWORD",
         "ENABLE_OCR", "RECONCILE_STALE_MINUTES", "ACCESS_TOKEN_MINUTES",
-        "CORS_ORIGINS", "FALLBACK_MESSAGE", "GREETING_MESSAGE", "KB_TOPIC"
+        "PASSWORD_MIN_LENGTH", "CORS_ORIGINS", "FALLBACK_MESSAGE", "GREETING_MESSAGE", "KB_TOPIC"
     ]
     for attr in expected_attrs:
         assert hasattr(cfg, attr), f"Missing setting {attr} from architecture §12"

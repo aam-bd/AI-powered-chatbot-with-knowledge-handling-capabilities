@@ -12,12 +12,23 @@ class ErrorResponse(BaseModel):
     code: str
 
 
+class MessageResponse(BaseModel):
+    """Standardized API message response."""
+    detail: str
+
+
 class UserRegisterRequest(BaseModel):
     """User registration payload. Note: role is not accepted and always forced to 'user'."""
     email: EmailStr
-    password: str = Field(..., min_length=6, description="Password with minimum 6 characters")
+    password: str = Field(..., min_length=10, description="Password with minimum 10 characters")
     # Optional role parameter to verify that even if supplied, it is discarded
     role: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    """Payload to update the user password."""
+    current_password: str = Field(..., min_length=1, description="Current user password")
+    new_password: str = Field(..., min_length=10, description="New password with minimum 10 characters")
 
 
 class UserLoginRequest(BaseModel):

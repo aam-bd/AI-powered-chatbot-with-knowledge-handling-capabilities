@@ -61,6 +61,7 @@ services:
       - CORS_ORIGINS=["http://localhost:3000"]
     volumes:
       - ./backend:/app
+      - ./:/repo:ro
       - ./logs:/app/logs
       - ./sample_kb:/app/sample_kb:ro
       - uploads:/app/uploads

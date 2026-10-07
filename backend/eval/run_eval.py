@@ -612,8 +612,8 @@ def main() -> None:
     parser.add_argument(
         "--password",
         type=str,
-        default=os.getenv("ADMIN_PASSWORD", "Admin123!@#"),
-        help="Password for authentication.",
+        default=os.getenv("ADMIN_PASSWORD", ""),
+        help="Password for authentication (falls back to ADMIN_PASSWORD environment variable).",
     )
     parser.add_argument(
         "--use-llm-judge",

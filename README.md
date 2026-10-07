@@ -115,13 +115,11 @@ Check that all backend services and databases report healthy:
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
-Seed the initial administrator user (configured by `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env`):
+Seed the initial administrator user (configured solely by `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your `.env` file):
 ```bash
 docker compose exec api python -m scripts.seed_admin
 ```
-Default credentials:
-- **Email**: `admin@example.com`
-- **Password**: `Admin123!@#`
+*(Note: There are no default or demo credentials. You define your administrator email and password in `.env` before running the seed script.)*
 
 ### Step 5: Access Web Application
 1. **Chat UI**: Navigate to [http://localhost:3000](http://localhost:3000) and log in.

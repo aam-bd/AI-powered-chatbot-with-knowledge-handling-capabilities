@@ -225,3 +225,93 @@ def test_partial_unique_index_on_document_sha256():
             assert doc3.id is not None
 
     asyncio.run(_test_index())
+
+
+def test_register_weak_password_rejected(client: TestClient):
+    """Verify registration rejects passwords shorter than PASSWORD_MIN_LENGTH (10 chars)."""
+    unique_email = f"shortpass_{uuid.uuid4().hex[:8]}@example.com"
+    payload = {
+        "email": unique_email,
+        "password": "Short1!",  # 7 chars < 10
+    }
+    response = client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 422
+    data = response.json()
+    assert "code" in data or "detail" in data
+
+
+def test_logout_revokes_refresh_token(client: TestClient):
+    """Verify that POST /auth/logout marks refresh token as revoked, preventing subsequent /refresh."""
+    unique_email = f"logout_{uuid.uuid4().hex[:8]}@example.com"
+    password = "SecurePassword123!"
+    reg_resp = client.post("/api/v1/auth/register", json={"email": unique_email, "password": password})
+    assert reg_resp.status_code == 201
+
+    login_resp = client.post("/api/v1/auth/login", json={"email": unique_email, "password": password})
+    assert login_resp.status_code == 200
+    tokens = login_resp.json()
+    refresh_token = tokens["refresh_token"]
+
+    # 1. First verify refresh token works before logout
+    ref_resp1 = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_resp1.status_code == 200
+
+    # 2. Call logout with refresh token
+    logout_resp = client.post("/api/v1/auth/logout", json={"refresh_token": refresh_token})
+    assert logout_resp.status_code == 200
+    assert "Logged out successfully" in logout_resp.json()["detail"]
+
+    # 3. Subsequent refresh with revoked token MUST return 401
+    ref_resp2 = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_resp2.status_code == 401
+    data = ref_resp2.json()
+    assert data["code"] == "TOKEN_REVOKED"
+
+
+def test_change_password_invalidates_old_password(client: TestClient):
+    """Verify changing password requires current password, rejects weak passwords, and invalidates old password."""
+    unique_email = f"changepw_{uuid.uuid4().hex[:8]}@example.com"
+    old_password = "OldPassword123!"
+    new_password = "NewPassword123!"
+
+    # Register & Login
+    client.post("/api/v1/auth/register", json={"email": unique_email, "password": old_password})
+    login_resp = client.post("/api/v1/auth/login", json={"email": unique_email, "password": old_password})
+    access_token = login_resp.json()["access_token"]
+    auth_headers = {"Authorization": f"Bearer {access_token}"}
+
+    # 1. Invalid current password -> 400
+    bad_current = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "WrongPassword123!", "new_password": new_password},
+        headers=auth_headers,
+    )
+    assert bad_current.status_code == 400
+    assert bad_current.json()["code"] == "INVALID_CURRENT_PASSWORD"
+
+    # 2. Weak new password (< 10 chars) -> 422
+    weak_new = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": old_password, "new_password": "Short1!"},
+        headers=auth_headers,
+    )
+    assert weak_new.status_code == 422
+
+    # 3. Successful password change -> 200
+    success_change = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": old_password, "new_password": new_password},
+        headers=auth_headers,
+    )
+    assert success_change.status_code == 200
+    assert "Password changed successfully" in success_change.json()["detail"]
+
+    # 4. Old password must fail login
+    old_login = client.post("/api/v1/auth/login", json={"email": unique_email, "password": old_password})
+    assert old_login.status_code == 401
+
+    # 5. New password must succeed
+    new_login = client.post("/api/v1/auth/login", json={"email": unique_email, "password": new_password})
+    assert new_login.status_code == 200
+    assert "access_token" in new_login.json()
+

@@ -26,6 +26,9 @@ A chatbot that answers questions **only** from a custom, medium-size knowledge b
 | S1 | Complete frontend | System | Next.js chat and admin UI (§11) |
 | S2 | Backend for queries, KB management and generation | System | FastAPI plus Celery workers (§3) |
 | S3 | Clean API-based architecture | System | Versioned REST and SSE API `/api/v1` (§8) |
+| E1 | Persistent per-user chat history | Extension | `chat_sessions`, `chat_messages`, history endpoints and sidebar (§4.1, §7, §8, §11) |
+| E2 | Registration, logout, password change | Extension | Register page, token revocation, account page (§8, §9.1, §11) |
+| E3 | Admin user management | Extension | `GET/PATCH /users`, admin users tab (§8, §11) |
 
 ### 1.2 Non-goals
 
@@ -122,6 +125,12 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 **`query_logs`**
 `id`, `user_id`, `session_id`, `intent`, `original_query`, `standalone_query`, `top_score`, `threshold`, `fallback_layer (null | 1 | 2 | 3)`, `cited_chunk_ids`, `latency_ms_router`, `latency_ms_retrieval`, `latency_ms_rerank`, `latency_ms_generation`, `created_at`
 
+**`chat_sessions`**
+`id (uuid)`, `user_id`, `title`, `created_at`, `updated_at`. Index on (`user_id`, `updated_at`).
+
+**`chat_messages`**
+`id`, `session_id`, `role ('user' | 'assistant')`, `kind ('normal' | 'fallback' | 'clarification' | 'greeting' | 'error')`, `content`, `citations (json, nullable)`, `fallback_layer (nullable)`, `created_at`. Index on (`session_id`, `created_at`).
+
 ### 4.2 Qdrant collection `kb_chunks`
 
 - **Vectors:** `dense` (dimension per embedding model, cosine) and `sparse` (BM25).
@@ -146,7 +155,8 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 
 | Key | Value | TTL |
 |---|---|---|
-| `session:{user_id}:{session_id}` | List of the last N messages (JSON) | 24 h, sliding |
+| `session:{user_id}:{session_id}` | The router's window: last N messages (JSON). A cache, rebuilt from PostgreSQL when missing | 24 h, sliding |
+| `revoked:{token_id}` | Marker for a revoked refresh token | Remaining token lifetime |
 | `ratelimit:{route}:{identity}` | Counter | Window length |
 | Celery broker keys | Managed by Celery | n/a |
 
@@ -388,13 +398,16 @@ Callers pass `system` separately; each adapter places it where its API expects i
 
 ---
 
-## 7. Conversation Memory
+## 7. Conversation Memory and Chat History
 
-- Stored in Redis per `user_id` and `session_id`, as the last `HISTORY_MESSAGES` messages (default 6).
-- 24 hour sliding TTL, refreshed on each turn.
-- Used by the router and rewriter only. The answer prompt receives the standalone query and retrieved context, not the raw history, which keeps grounding strict.
-- `DELETE /api/v1/chat/sessions/{session_id}` clears a session on demand.
-- If Redis is unavailable, chat still works without memory, and the failure is logged.
+- **Persistent history (PostgreSQL).** Every conversation is stored in `chat_sessions` and `chat_messages`, so users see their past chats after logging out and back in. Only the owner can read, rename or delete a conversation. There is no admin UI for reading other users' chats.
+- **Router window (Redis).** The router uses the last `HISTORY_MESSAGES` messages (default 6) from the key `session:{user_id}:{session_id}` with a 24 hour sliding TTL. If the key is missing (expired, or Redis restarted), it is rebuilt from PostgreSQL. If Redis is unavailable, the window is read directly from PostgreSQL.
+- **Write path.** On each chat turn the user message is saved before generation and the assistant message (text, citations, `kind`, `fallback_layer`) is saved after the stream ends. A `retract` stores the fallback text instead of the answer. A failed generation never stores partial text as an answer.
+- **Session IDs.** The client sends `session_id`. If it does not exist, a session is created for the current user. If it belongs to another user, the API returns `404`.
+- **Titles.** The title is the first user message truncated to 60 characters; the user can rename it.
+- **Delete.** `DELETE /chat/sessions/{id}` removes the conversation from PostgreSQL and its Redis key.
+- **Router input.** The answer prompt still receives the standalone query and retrieved chunks, not the raw history (§6.5). Messages with `kind` other than `normal` are marked for the router so it does not treat them as knowledge.
+- **Privacy.** `query_logs` also store user questions for evaluation. The README states what is stored and for how long.
 
 ---
 
@@ -408,14 +421,20 @@ Base path: `/api/v1`. Documentation is generated automatically at `/docs` (Swagg
 | `POST /auth/login` | public | Returns access and refresh tokens |
 | `POST /auth/refresh` | public (refresh token) | New access token |
 | `GET /auth/me` | user | Current user and role |
+| `POST /auth/logout` | user | Revoke the refresh token |
+| `POST /auth/change-password` | user | Requires the current password |
 | `POST /chat/stream` | user | Streamed answer (events in §6.8) |
-| `GET /chat/sessions` | user | The caller's sessions |
-| `DELETE /chat/sessions/{id}` | user (owner) | Clear a session |
+| `GET /chat/sessions` | user | The caller's conversations (id, title, updated_at), newest first |
+| `GET /chat/sessions/{id}/messages` | user (owner) | Full message history with citations |
+| `PATCH /chat/sessions/{id}` | user (owner) | Rename a conversation |
+| `DELETE /chat/sessions/{id}` | user (owner) | Delete a conversation |
 | `POST /documents` | admin | Upload file or submit URL; returns `202` |
 | `PUT /documents/{id}` | admin | Upload a new version |
 | `GET /documents` | admin | List documents with status |
 | `GET /documents/{id}/status` | admin | Status, versions, `last_error` |
 | `DELETE /documents/{id}` | admin | Start two-phase delete |
+| `GET /users` | admin | List users |
+| `PATCH /users/{id}` | admin | Change role, activate or deactivate. Admins cannot demote or deactivate themselves, and the last active admin is protected |
 | `GET /health` | public | Postgres, Redis and Qdrant status |
 
 Standard error format: `{ "detail": "...", "code": "..." }` with correct HTTP status codes (`401`, `403`, `404`, `409` duplicate, `413` too large, `422`, `429`, `503`).
@@ -430,7 +449,10 @@ Standard error format: `{ "detail": "...", "code": "..." }` with correct HTTP st
 - Short-lived access tokens (default 30 minutes) plus refresh tokens.
 - Role check dependency (`require_admin`) on every admin route.
 - The first admin is created by `scripts/seed_admin.py` or environment variables, never through the API.
-- Session ownership enforced through the `user_id` in the Redis key.
+- Conversation ownership is enforced in PostgreSQL (and through the `user_id` in the Redis key).
+- Logout revokes the refresh token (revocation marker in Redis); deactivated users cannot log in or refresh.
+- Password policy: minimum length `PASSWORD_MIN_LENGTH` (default 10), enforced server-side.
+- **No demo, default or prefilled credentials anywhere**: not in the frontend, README, examples or tests. The first admin comes only from `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env`, with placeholders in `.env.example`. Any secret that was ever committed must be rotated.
 
 ### 9.2 Uploads
 
@@ -473,10 +495,12 @@ Next.js (App Router) with TypeScript and Tailwind.
 
 | Area | Components and behaviour |
 |---|---|
-| Auth | `LoginForm`; token storage and refresh; role-aware routing |
+| Auth | Separate `LoginForm` and `RegisterForm` pages linked to each other (no prefilled or demo credentials); token storage and refresh; logout that calls the API; account page for password change; role-aware routing |
 | Chat | `ChatWindow` with streamed tokens; message bubbles; citation chips; `CitationsDrawer` showing document, page and section; handles `retract` by replacing the displayed answer with the fallback; `SessionControls` (new chat calls DELETE) |
 | Admin | `AdminDocManager`: file and URL upload, status polling with Pending, Processing, Active, Updating, Deleting, Failed; shows `last_error`; update and delete actions. Visible to admins only |
 | UX | Loading and error states, responsive layout, disabled input while streaming |
+| History | `ChatHistorySidebar`: conversations from `GET /chat/sessions`, restore messages and citations, rename, delete, new chat. History persists across logout and login |
+| Admin users | `AdminUsers` tab: users table, role change and activate or deactivate with confirmation |
 
 `services/streamChat.ts` implements fetch-based streaming with the bearer token and parses the events in §6.8.
 
@@ -514,6 +538,7 @@ All values come from environment variables with sensible defaults. Nothing below
 | `ENABLE_OCR` | false | Optional OCR |
 | `RECONCILE_STALE_MINUTES` | 15 | Heartbeat staleness |
 | `ACCESS_TOKEN_MINUTES` | 30 | JWT lifetime |
+| `PASSWORD_MIN_LENGTH` | 10 | Server-side password policy |
 | `CORS_ORIGINS` | frontend URL | Allowed origins |
 | `FALLBACK_MESSAGE`, `GREETING_MESSAGE` | see §6.7 | Canned replies |
 
@@ -560,6 +585,9 @@ Fifty questions give a rough estimate with wide error margins. Report actual cou
 | `test_ssrf.py` | Private IPs, redirects to private IPs, oversized responses, non-allowlisted domains |
 | `test_sessions.py` | Ownership, TTL, history cap, clear session |
 | `test_llm_adapters.py` | Both adapters against mocked HTTP: system prompt placement, streaming, error mapping, retries, base URL validation, key never logged |
+| `test_chat_history.py` | History survives re-login, owner-only access, citations restored, retract stored correctly, delete removes everything, history rebuilt after Redis flush |
+| `test_users_admin.py` | Role and activation rules, last-admin protection, 403 for normal users, deactivated users cannot log in |
+| `test_no_demo_credentials.py` | Fails if default or demo credentials or secrets appear in the repo |
 
 ---
 
@@ -574,7 +602,10 @@ ai-chatbot-project/
 │   │   │   ├── CitationsDrawer.tsx
 │   │   │   ├── AdminDocManager.tsx
 │   │   │   ├── SessionControls.tsx
-│   │   │   └── LoginForm.tsx
+│   │   │   ├── LoginForm.tsx
+│   │   │   ├── RegisterForm.tsx
+│   │   │   ├── ChatHistorySidebar.tsx
+│   │   │   └── AdminUsers.tsx
 │   │   └── services/
 │   │       ├── api.ts
 │   │       └── streamChat.ts
@@ -583,7 +614,7 @@ ai-chatbot-project/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── v1/ (auth.py, chat.py, documents.py, health.py)
+│   │   │   ├── v1/ (auth.py, chat.py, documents.py, users.py, health.py)
 │   │   │   └── router.py
 │   │   ├── core/ (config.py, security.py, logger.py, rate_limit.py)
 │   │   ├── db/
@@ -674,3 +705,6 @@ Setup and environment variables, how to seed the admin, supported formats and th
 - A topically close chunk can still mislead the model; Layers 2 and 3 reduce but do not eliminate that risk.
 - Cutover during updates is near-atomic: a short overlap of old and new chunks is possible.
 - Single shared KB; no per-user document permissions.
+- No password reset by email and no email verification.
+- Tokens are held in browser storage, which scripts could read if the site had an XSS flaw (mitigated by safe rendering and security headers).
+- Questions are also stored in `query_logs`; there is no automatic retention cleanup.
