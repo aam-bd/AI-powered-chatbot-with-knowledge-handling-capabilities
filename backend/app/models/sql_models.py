@@ -72,6 +72,11 @@ class User(Base):
     # Relationships
     documents: Mapped[List["Document"]] = relationship("Document", back_populates="creator")
     query_logs: Mapped[List["QueryLog"]] = relationship("QueryLog", back_populates="user")
+    chat_sessions: Mapped[List["ChatSession"]] = relationship(
+        "ChatSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class Document(Base):
@@ -224,3 +229,100 @@ class QueryLog(Base):
     )
 
     user: Mapped[Optional["User"]] = relationship("User", back_populates="query_logs")
+
+
+class ChatSession(Base):
+    """Persistent chat conversation session."""
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default="New Chat",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="chat_sessions")
+    messages: Mapped[List["ChatMessageRecord"]] = relationship(
+        "ChatMessageRecord",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessageRecord.created_at",
+    )
+
+    __table_args__ = (
+        Index("ix_chat_sessions_user_id_updated_at", "user_id", "updated_at"),
+    )
+
+
+class ChatMessageRecord(Base):
+    """Individual conversation message stored in PostgreSQL."""
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )  # 'user' | 'assistant'
+    kind: Mapped[str] = mapped_column(
+        String(20),
+        default="normal",
+        nullable=False,
+    )  # 'normal' | 'fallback' | 'clarification' | 'greeting' | 'error'
+    content: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+    citations: Mapped[Optional[list]] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    fallback_layer: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )  # null | 1 | 2 | 3
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+
+    # Relationships
+    session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")
+
+    __table_args__ = (
+        Index("ix_chat_messages_session_id_created_at", "session_id", "created_at"),
+    )
+

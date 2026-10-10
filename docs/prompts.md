@@ -280,6 +280,13 @@ Task: Phase 7c, persistent chat history. Read architecture sections 4.1 (chat_se
 
 Tests (tests/test_chat_history.py): history survives a new login, owner-only access (404 for others), messages restored with citations, retract stored correctly, delete removes everything, Redis flushed then history rebuilt. Run them.
 Acceptance: log in, chat, log out, log in again, and the conversation is there with working citations; a second user cannot see it. Give me screenshots if you can use the browser.
+
+- Persistence errors are logged and must never break or delay the SSE stream.
+- The server generates session IDs. Ignore any client-supplied ID that doesn't exist (or return 404) rather than creating a session with a client-chosen ID.
+- Paginate the sessions list and the messages endpoint.
+- On logout, clear all client-side chat state so the next user on the same browser never sees cached conversations.
+- All 82 existing tests must still pass, and the migration must apply cleanly to the existing database (include a working downgrade).
+
 ```
 
 ---

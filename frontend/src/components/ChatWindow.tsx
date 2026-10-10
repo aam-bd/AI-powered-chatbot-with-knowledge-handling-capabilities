@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, CitationItem } from '@/types/chat';
 import { streamChat } from '@/services/streamChat';
+import { fetchSessionMessages } from '@/services/api';
 import CitationsDrawer from './CitationsDrawer';
 import {
   Send,
@@ -18,7 +19,8 @@ import {
 } from 'lucide-react';
 
 interface ChatWindowProps {
-  sessionId: string;
+  sessionId?: string | null;
+  onSessionCreated?: (newSessionId: string) => void;
   onSessionUpdated?: () => void;
   onNewChat?: () => void;
   onToggleSidebar?: () => void;
@@ -26,6 +28,7 @@ interface ChatWindowProps {
 
 export default function ChatWindow({
   sessionId,
+  onSessionCreated,
   onSessionUpdated,
   onNewChat,
   onToggleSidebar,
@@ -33,6 +36,7 @@ export default function ChatWindow({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Drawer state
@@ -42,6 +46,46 @@ export default function ChatWindow({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load message history whenever sessionId changes
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      return;
+    }
+    let isCancelled = false;
+    const loadHistory = async () => {
+      setIsLoadingMessages(true);
+      setErrorBanner(null);
+      try {
+        const historyItems = await fetchSessionMessages(sessionId);
+        if (!isCancelled) {
+          const loaded: ChatMessage[] = historyItems.map((item) => ({
+            id: item.id,
+            role: item.role,
+            content: item.content,
+            kind: item.kind,
+            citations: item.citations || [],
+            timestamp: item.created_at,
+          }));
+          setMessages(loaded);
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          loggerErr: console.warn('Could not load session history:', err);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingMessages(false);
+        }
+      }
+    };
+
+    loadHistory();
+    return () => {
+      isCancelled = true;
+    };
+  }, [sessionId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -170,6 +214,11 @@ export default function ChatWindow({
                 : msg
             )
           );
+          if (event.session_id) {
+            if (onSessionCreated && (!sessionId || sessionId !== event.session_id)) {
+              onSessionCreated(event.session_id);
+            }
+          }
           if (onSessionUpdated) onSessionUpdated();
         }
       }
@@ -239,7 +288,7 @@ export default function ChatWindow({
           )}
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-medium text-gray-300">
-            Session: <span className="font-mono text-emerald-400">{sessionId.slice(0, 8)}...</span>
+            Session: <span className="font-mono text-emerald-400">{sessionId ? `${sessionId.slice(0, 8)}...` : 'New Chat'}</span>
           </span>
         </div>
 

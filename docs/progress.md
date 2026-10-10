@@ -2,10 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7b (Security fixes, registration and account features - Complete)
-- Last completed task: Prompt 7b: Security fixes, registration and account features (Removed all demo credentials, implemented registration UI, logout token revocation via Redis, change-password API and account UI, HTTP security headers, and automated credential check tests)
-- Next up: Prompt 7c: Persistent chat history (chat_sessions, chat_messages, history sidebar)
-- Status: Phase 7b Complete, 82/82 Tests Passing
+- Current phase: 7c (Persistent chat history - Complete)
+- Last completed task: Prompt 7c: Persistent chat history (chat_sessions, chat_messages, Alembic migration 002, Redis window rebuilding from PostgreSQL, sidebar conversation management with rename/delete, full history and interactive citations restoration on session select, and client state cleanup on logout)
+- Next up: Prompt 7d: Admin user management
+- Status: Phase 7c Complete, 91/91 Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -18,7 +18,7 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 6 Evaluation and threshold calibration
 - [x] 7a Full Audit (docs/audit.md)
 - [x] 7b Security fixes, registration and account features
-- [ ] 7c Persistent chat history
+- [x] 7c Persistent chat history
 - [ ] 7d Admin user management
 - [ ] 7e Final evaluation, README and clean start
 
@@ -27,6 +27,7 @@ C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
 G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-10: Persistent chat history (Phase 7c) - implemented server-assigned UUID session generation for unknown or non-UUID client session IDs, while strictly returning HTTP 404 for session IDs belonging to another user. Retained Redis as sliding 24h cache window with automatic PostgreSQL hydration on cache miss or restart.
 - 2026-10-06: Implemented strict evaluation dataset isolation in `calibrate_threshold.py` enforcing that calibration sweeps exclusively inspect `calibration_set.json` and raise hard errors if pointed to `test_set.json`.
 - 2026-10-06: Implemented `run_eval.py` benchmarking running API with Redis multi-turn conversation memory priming, SSE event streaming, facts verification, in-code citation structural verification, and optional labeled LLM-as-judge step (`gemini-3.1-flash-lite`).
 
@@ -49,6 +50,28 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-10 - Prompt 7c: Persistent Chat History (Phase 7c Complete)
+- **Goal:** Carry out Prompt 7c: Implement persistent chat history with PostgreSQL tables `chat_sessions` and `chat_messages` via Alembic migration `002_chat_history.py`, streaming message persistence (pre-generation user turn, post-generation assistant turn), server-assigned UUID session generation, foreign-session 404 isolation, owner-only REST endpoints (`GET /sessions`, `GET /sessions/{id}/messages`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}`), Redis sliding window cache with automatic PostgreSQL rehydration on cache miss or restart, sidebar conversation management (inline rename, delete confirmation, new chat), history message and interactive citation chip restoration, and client-side chat state wiping on logout.
+- **Files Created/Modified:**
+  - `backend/app/models/sql_models.py`: Added `ChatSession` and `ChatMessageRecord` SQLAlchemy models with composite indexes and cascade deletion on `User.chat_sessions`.
+  - `backend/app/db/migrations/versions/002_chat_history.py`: Created Alembic migration; validated both `alembic downgrade -1` and `alembic upgrade head`.
+  - `backend/app/models/schemas.py`: Updated `SessionSummaryResponse`, added `SessionRenameRequest`, `ChatMessageItemResponse`, and updated `ChatStreamRequest` (`session_id: Optional[str] = None`).
+  - `backend/app/services/session_manager.py`: Implemented PostgreSQL persistence (`get_or_create_session`, `persist_user_message`, `persist_assistant_message`, `list_sessions`, `get_session_messages`, `rename_session`, `clear_session`), server-assigned ID fallback for non-existent/unknown IDs, HTTP 404 for foreign-owned sessions, and transparent Redis window rehydration from PostgreSQL upon cache misses in `get_history()`.
+  - `backend/app/api/v1/chat.py`: Persisted turns in streaming SSE endpoint, set `X-Session-ID` response header, and added `GET /sessions/{id}/messages`, `PATCH /sessions/{id}`, and `DELETE /sessions/{id}` endpoints.
+  - `backend/tests/test_chat_history.py`: Created dedicated test suite (9 tests) verifying login survival, foreign-user 404 isolation, citations restoration, retract persistence, failure safety against partial answers, delete cascade, Redis cache rehydration, server session assignment, and inline renaming.
+  - `backend/tests/test_sessions.py` & `backend/tests/test_rag_pipeline.py`: Updated existing session test fixtures to use persistent PostgreSQL-backed session manager.
+  - `frontend/src/types/chat.ts`: Added `ChatMessageItem` and updated `SessionSummary` and `ChatStreamEvent` types.
+  - `frontend/src/services/api.ts`: Added `fetchSessions`, `fetchSessionMessages`, and `renameChatSession`.
+  - `frontend/src/services/streamChat.ts`: Updated `streamChat` to accept optional `sessionId`, omit when null, parse `X-Session-ID`, and emit `session_id` on `done`.
+  - `frontend/src/components/SessionControls.tsx`: Added inline title renaming (edit button, save, cancel), delete confirmation prompt, and auto-refresh on new session creation.
+  - `frontend/src/components/ChatWindow.tsx`: Added history loading on session selection, restored interactive citation chips opening `CitationsDrawer`, and wired `onSessionCreated` callback.
+  - `frontend/src/app/page.tsx`: Rewired session lifecycle so client never generates random IDs; wiped all client-side chat states on logout.
+- **Verification:**
+  - Database migration: `alembic downgrade -1` and `alembic upgrade head` executed cleanly.
+  - Automated tests: All 91 backend tests (`pytest tests/ -v`) passed with zero errors in 120s.
+  - Container build: Next.js standalone container rebuilt and verified healthy on port 3000 (HTTP 200).
+  - Live API E2E: Verified multi-user registration, streaming without session_id (server assigns ID), listing, renaming, history fetching with citations, logout/re-login persistence, and strict HTTP 404 cross-user session isolation.
+
 ### 2026-10-07 - Prompt 7b: Security Fixes, Registration and Account Features (Phase 7b Complete)
 - **Goal:** Carry out Prompt 7b: Address Critical and High security findings from `docs/audit.md`, purge demo credentials and fill controls, enforce password policies, implement registration and account management flows, configure security headers, and add regression test suites.
 - **Files Created/Modified:**

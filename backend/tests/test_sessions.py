@@ -113,12 +113,24 @@ async def test_session_message_kind_markers(session_manager: SessionManager):
 
 
 @pytest.mark.asyncio
-async def test_session_ownership_isolation(session_manager: SessionManager):
+async def test_session_ownership_isolation(client: TestClient, session_manager: SessionManager):
     """Verify user A cannot read, list, or delete user B's session."""
-    user_a = str(uuid.uuid4())
-    user_b = str(uuid.uuid4())
-    sess_a = f"sess-a-{uuid.uuid4().hex[:6]}"
-    sess_b = f"sess-b-{uuid.uuid4().hex[:6]}"
+    email_a = f"usera_{uuid.uuid4().hex[:8]}@example.com"
+    email_b = f"userb_{uuid.uuid4().hex[:8]}@example.com"
+    pwd = "Password123!"
+
+    r_a = client.post("/api/v1/auth/register", json={"email": email_a, "password": pwd})
+    assert r_a.status_code == 201
+    user_a = str(r_a.json()["id"])
+
+    r_b = client.post("/api/v1/auth/register", json={"email": email_b, "password": pwd})
+    assert r_b.status_code == 201
+    user_b = str(r_b.json()["id"])
+
+    s_a = await session_manager.get_or_create_session(user_a, initial_title="Message A")
+    sess_a = str(s_a.id)
+    s_b = await session_manager.get_or_create_session(user_b, initial_title="Message B")
+    sess_b = str(s_b.id)
 
     await session_manager.append_message(user_a, sess_a, "user", "Message A")
     await session_manager.append_message(user_b, sess_b, "user", "Message B")
@@ -165,8 +177,10 @@ async def test_chat_sessions_api_endpoints(client: TestClient, session_manager: 
     assert l2.status_code == 200, f"Login failed for user 2: {l2.text}"
     token_2 = l2.json()["access_token"]
 
-    sess_1 = f"api-sess-1-{uuid.uuid4().hex[:6]}"
-    sess_2 = f"api-sess-2-{uuid.uuid4().hex[:6]}"
+    s1 = await session_manager.get_or_create_session(user_id_1, initial_title="Hello from User 1")
+    sess_1 = str(s1.id)
+    s2 = await session_manager.get_or_create_session(user_id_2, initial_title="Hello from User 2")
+    sess_2 = str(s2.id)
 
     await session_manager.append_message(user_id_1, sess_1, "user", "Hello from User 1")
     await session_manager.append_message(user_id_2, sess_2, "user", "Hello from User 2")
@@ -198,6 +212,7 @@ async def test_chat_sessions_api_endpoints(client: TestClient, session_manager: 
     assert not any(s["session_id"] == sess_1 for s in resp_after.json())
 
     # Cleanup user 2
+    await session_manager.clear_session(user_id_2, sess_2)
     await session_manager.clear_session(user_id_2, sess_2)
 
 

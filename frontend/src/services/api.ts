@@ -1,4 +1,4 @@
-import { TokenResponse, User, SessionSummary, DocumentItem } from '@/types/chat';
+import { TokenResponse, User, SessionSummary, ChatMessageItem, DocumentItem } from '@/types/chat';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -221,7 +221,27 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
     return [];
   }
   const data = await res.json();
-  return data.sessions || [];
+  return Array.isArray(data) ? data : data.sessions || [];
+}
+
+export async function fetchSessionMessages(sessionId: string): Promise<ChatMessageItem[]> {
+  const res = await fetchWithAuth(`/chat/sessions/${sessionId}/messages`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch session messages');
+  }
+  return res.json();
+}
+
+export async function renameChatSession(sessionId: string, title: string): Promise<SessionSummary> {
+  const res = await fetchWithAuth(`/chat/sessions/${sessionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to rename session' }));
+    throw new Error(err.detail || 'Failed to rename session');
+  }
+  return res.json();
 }
 
 export async function deleteChatSession(sessionId: string): Promise<boolean> {

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
@@ -126,11 +126,35 @@ class ChatMessage(BaseModel):
 
 
 class SessionSummaryResponse(BaseModel):
-    """Summary representation of an active chat session."""
+    """Summary representation of a chat session."""
+    id: uuid.UUID
     session_id: str
-    message_count: int
+    title: str
+    message_count: int = 0
     last_message_preview: Optional[str] = None
+    created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SessionRenameRequest(BaseModel):
+    """Request payload for renaming a conversation."""
+    title: str = Field(..., min_length=1, max_length=255, description="Updated session title")
+
+
+class ChatMessageItemResponse(BaseModel):
+    """Message item representation from persistent history."""
+    id: int
+    session_id: uuid.UUID
+    role: str
+    kind: str
+    content: str
+    citations: Optional[List[Dict[str, Any]]] = None
+    fallback_layer: Optional[int] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SessionDeleteResponse(BaseModel):
@@ -159,7 +183,7 @@ class RouterDecision(BaseModel):
 
 class ChatStreamRequest(BaseModel):
     """Request payload for POST /api/v1/chat/stream."""
-    session_id: str = Field(..., min_length=1, max_length=128, description="Conversation session ID")
+    session_id: Optional[str] = Field(None, max_length=128, description="Conversation session ID (optional; server creates session if omitted)")
     message: str = Field(..., min_length=1, description="User question or statement")
 
 

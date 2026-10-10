@@ -6,15 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import SessionControls from '@/components/SessionControls';
 import ChatWindow from '@/components/ChatWindow';
 import { SessionSummary } from '@/types/chat';
-import { fetchSessions, deleteChatSession } from '@/services/api';
+import { fetchSessions, deleteChatSession, renameChatSession } from '@/services/api';
 import { Loader2 } from 'lucide-react';
-
-function generateSessionId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'sess-' + Math.random().toString(36).substring(2, 15);
-}
 
 export default function ChatPage() {
   const router = useRouter();
@@ -23,11 +16,7 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>('');
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
-
-  // Initialize fresh session ID on mount
-  useEffect(() => {
-    setSessionId(generateSessionId());
-  }, []);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!user) return;
@@ -42,41 +31,45 @@ export default function ChatPage() {
     }
   }, [user]);
 
-  // Auth protection guard
+  // Auth protection guard: wipes client chat state on logout
   useEffect(() => {
     if (!authLoading && !user) {
+      setSessions([]);
+      setSessionId('');
       router.push('/login');
     } else if (user) {
       loadSessions();
     }
   }, [user, authLoading, router, loadSessions]);
 
-  const handleNewChat = async () => {
-    if (sessionId) {
-      try {
-        await deleteChatSession(sessionId);
-      } catch {
-        // session might not exist in redis yet, safe to proceed
-      }
-    }
-    const newId = generateSessionId();
-    setSessionId(newId);
-    await loadSessions();
+  const handleNewChat = () => {
+    setSessionId('');
   };
 
   const handleSelectSession = (selectedId: string) => {
     setSessionId(selectedId);
   };
 
-  const handleDeleteSession = async (idToDelete: string) => {
-    await deleteChatSession(idToDelete);
-    if (idToDelete === sessionId) {
-      setSessionId(generateSessionId());
+  const handleRenameSession = async (id: string, newTitle: string) => {
+    try {
+      await renameChatSession(id, newTitle);
+      await loadSessions();
+    } catch (err) {
+      console.error('Failed to rename session', err);
     }
-    await loadSessions();
   };
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handleDeleteSession = async (idToDelete: string) => {
+    try {
+      await deleteChatSession(idToDelete);
+      if (idToDelete === sessionId) {
+        setSessionId('');
+      }
+      await loadSessions();
+    } catch (err) {
+      console.error('Failed to delete session', err);
+    }
+  };
 
   if (authLoading || (!user && typeof window !== 'undefined')) {
     return (
@@ -118,21 +111,24 @@ export default function ChatPage() {
             handleNewChat();
             setSidebarOpen(false);
           }}
+          onRenameSession={handleRenameSession}
           onDeleteSession={handleDeleteSession}
           isLoadingSessions={isLoadingSessions}
         />
       </div>
 
       <main className="flex-1 h-full flex flex-col min-w-0">
-        {sessionId && (
-          <ChatWindow
-            key={sessionId}
-            sessionId={sessionId}
-            onSessionUpdated={loadSessions}
-            onNewChat={handleNewChat}
-            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-          />
-        )}
+        <ChatWindow
+          key={sessionId || 'new-chat'}
+          sessionId={sessionId}
+          onSessionCreated={(newId) => {
+            setSessionId(newId);
+            loadSessions();
+          }}
+          onSessionUpdated={loadSessions}
+          onNewChat={handleNewChat}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+        />
       </main>
     </div>
   );

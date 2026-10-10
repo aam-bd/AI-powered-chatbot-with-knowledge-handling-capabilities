@@ -21,6 +21,8 @@ from app.db.session import AsyncSessionLocal
 from app.models.schemas import (
     ErrorResponse,
     SessionSummaryResponse,
+    SessionRenameRequest,
+    ChatMessageItemResponse,
     SessionDeleteResponse,
     ChatStreamRequest,
     RouterIntent,
@@ -132,6 +134,18 @@ def _format_sse(event: str, data: dict) -> str:
         401: {"model": ErrorResponse, "description": "Unauthorized"},
     },
 )
+@router.post(
+    "/stream",
+    summary="Stream chat completion via SSE",
+    responses={
+        200: {
+            "content": {"text/event-stream": {}},
+            "description": "Server-Sent Events stream (token, citations, retract, error, done)",
+        },
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Session not found"},
+    },
+)
 async def chat_stream(
     body: ChatStreamRequest,
     current_user: User = Depends(require_user),
@@ -142,8 +156,16 @@ async def chat_stream(
 ) -> StreamingResponse:
     """Execute end-to-end RAG chat pipeline and stream results over SSE."""
     user_id = str(current_user.id)
-    session_id = body.session_id
     user_message = body.message
+
+    # Validate or assign session (raises 404 if client-provided session_id is unknown or foreign)
+    chat_session = await session_manager.get_or_create_session(
+        user_id=user_id,
+        session_id=body.session_id,
+        initial_title=user_message,
+    )
+    session_id = str(chat_session.id)
+    session_uuid = chat_session.id
 
     async def event_generator() -> AsyncIterator[str]:
         latency_router: Optional[float] = None
@@ -152,10 +174,23 @@ async def chat_stream(
         latency_generation: Optional[float] = None
 
         try:
-            # 1. Fetch conversation history from Redis
+            # 1. Fetch prior conversation history from Redis (or reconstructed from PG on cache miss)
             history = await session_manager.get_history(user_id, session_id)
 
-            # 2. Intent routing & query rewriting (FAST role)
+            # 2. Persist user message to PostgreSQL and append to Redis BEFORE generation
+            await session_manager.persist_user_message(
+                session_id=session_uuid,
+                content=user_message,
+            )
+            await session_manager.append_message(
+                user_id=user_id,
+                session_id=session_id,
+                role="user",
+                content=user_message,
+                kind=MessageKind.NORMAL,
+            )
+
+            # 3. Intent routing & query rewriting (FAST role)
             router_start = time.perf_counter()
             decision = await intent_router.route(message=user_message, history=history)
             latency_router = (time.perf_counter() - router_start) * 1000.0
@@ -166,14 +201,12 @@ async def chat_stream(
             if decision.intent == RouterIntent.GREETING:
                 greeting_text = settings.GREETING_MESSAGE
                 yield _format_sse("token", {"text": greeting_text})
-                yield _format_sse("done", {"intent": "GREETING", "fallback_layer": None})
+                yield _format_sse("done", {"session_id": session_id, "intent": "GREETING", "fallback_layer": None})
 
-                await session_manager.append_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    role="user",
-                    content=user_message,
-                    kind=MessageKind.NORMAL,
+                await session_manager.persist_assistant_message(
+                    session_id=session_uuid,
+                    content=greeting_text,
+                    kind="normal",
                 )
                 await session_manager.append_message(
                     user_id=user_id,
@@ -200,14 +233,12 @@ async def chat_stream(
                     "Could you please provide more details or clarify your question?"
                 )
                 yield _format_sse("token", {"text": clarify_text})
-                yield _format_sse("done", {"intent": "CLARIFY", "fallback_layer": None})
+                yield _format_sse("done", {"session_id": session_id, "intent": "CLARIFY", "fallback_layer": None})
 
-                await session_manager.append_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    role="user",
-                    content=user_message,
-                    kind=MessageKind.NORMAL,
+                await session_manager.persist_assistant_message(
+                    session_id=session_uuid,
+                    content=clarify_text,
+                    kind="clarify",
                 )
                 await session_manager.append_message(
                     user_id=user_id,
@@ -244,14 +275,13 @@ async def chat_stream(
                 )
                 fallback_text = settings.FALLBACK_MESSAGE
                 yield _format_sse("token", {"text": fallback_text})
-                yield _format_sse("done", {"intent": "SEARCH", "fallback_layer": 1})
+                yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": 1})
 
-                await session_manager.append_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    role="user",
-                    content=user_message,
-                    kind=MessageKind.NORMAL,
+                await session_manager.persist_assistant_message(
+                    session_id=session_uuid,
+                    content=fallback_text,
+                    kind="fallback",
+                    fallback_layer=1,
                 )
                 await session_manager.append_message(
                     user_id=user_id,
@@ -316,14 +346,13 @@ async def chat_stream(
                 logger.info("Layer 2 Sentinel triggered abort. Sending fallback.")
                 fallback_text = settings.FALLBACK_MESSAGE
                 yield _format_sse("token", {"text": fallback_text})
-                yield _format_sse("done", {"intent": "SEARCH", "fallback_layer": 2})
+                yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": 2})
 
-                await session_manager.append_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    role="user",
-                    content=user_message,
-                    kind=MessageKind.NORMAL,
+                await session_manager.persist_assistant_message(
+                    session_id=session_uuid,
+                    content=fallback_text,
+                    kind="fallback",
+                    fallback_layer=2,
                 )
                 await session_manager.append_message(
                     user_id=user_id,
@@ -361,14 +390,13 @@ async def chat_stream(
                 logger.info("Layer 3: Ungrounded answer retracted. Emitting retract event.")
                 fallback_text = settings.FALLBACK_MESSAGE
                 yield _format_sse("retract", {"text": fallback_text})
-                yield _format_sse("done", {"intent": "SEARCH", "fallback_layer": 3})
+                yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": 3})
 
-                await session_manager.append_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    role="user",
-                    content=user_message,
-                    kind=MessageKind.NORMAL,
+                await session_manager.persist_assistant_message(
+                    session_id=session_uuid,
+                    content=fallback_text,
+                    kind="fallback",
+                    fallback_layer=3,
                 )
                 await session_manager.append_message(
                     user_id=user_id,
@@ -397,14 +425,13 @@ async def chat_stream(
             # Success: Emit resolved citations
             citations_payload = [c.model_dump() for c in resolution.citations]
             yield _format_sse("citations", {"citations": citations_payload})
-            yield _format_sse("done", {"intent": "SEARCH", "fallback_layer": None})
+            yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": None})
 
-            await session_manager.append_message(
-                user_id=user_id,
-                session_id=session_id,
-                role="user",
-                content=user_message,
-                kind=MessageKind.NORMAL,
+            await session_manager.persist_assistant_message(
+                session_id=session_uuid,
+                content=full_answer,
+                kind="normal",
+                citations=citations_payload,
             )
             await session_manager.append_message(
                 user_id=user_id,
@@ -449,7 +476,7 @@ async def chat_stream(
                     "code": code,
                 },
             )
-            yield _format_sse("done", {"intent": "SEARCH", "fallback_layer": None})
+            yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": None})
 
     return StreamingResponse(
         event_generator(),
@@ -458,6 +485,7 @@ async def chat_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "X-Session-ID": session_id,
         },
     )
 
@@ -476,6 +504,51 @@ async def list_chat_sessions(
 ) -> List[SessionSummaryResponse]:
     """Retrieve all active conversation sessions belonging to the authenticated caller."""
     return await session_manager.list_sessions(user_id=str(current_user.id))
+
+
+@router.get(
+    "/sessions/{session_id}/messages",
+    response_model=List[ChatMessageItemResponse],
+    summary="Get full conversation history for a session",
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Session not found"},
+    },
+)
+async def get_session_messages(
+    session_id: str,
+    current_user: User = Depends(require_user),
+    session_manager: SessionManager = Depends(get_session_manager),
+) -> List[ChatMessageItemResponse]:
+    """Retrieve all messages in a session in chronological order with citations. Strictly owner-only."""
+    return await session_manager.get_session_messages(
+        user_id=str(current_user.id),
+        session_id=session_id,
+    )
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=SessionSummaryResponse,
+    summary="Rename conversation session",
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Session not found"},
+        422: {"model": ErrorResponse, "description": "Invalid title"},
+    },
+)
+async def rename_chat_session(
+    session_id: str,
+    body: SessionRenameRequest,
+    current_user: User = Depends(require_user),
+    session_manager: SessionManager = Depends(get_session_manager),
+) -> SessionSummaryResponse:
+    """Rename a conversation session title. Strictly owner-only."""
+    return await session_manager.rename_session(
+        user_id=str(current_user.id),
+        session_id=session_id,
+        title=body.title,
+    )
 
 
 @router.delete(

@@ -38,10 +38,23 @@ export interface ChatMessage {
 }
 
 export interface SessionSummary {
+  id: string;
   session_id: string;
+  title: string;
   message_count: number;
-  last_message_at: string;
-  snippet: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageItem {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  kind?: MessageKind;
+  citations?: CitationItem[];
+  fallback_layer?: number | null;
+  created_at: string;
 }
 
 export type ChatStreamEvent =
@@ -49,7 +62,7 @@ export type ChatStreamEvent =
   | { type: 'citations'; citations: CitationItem[] }
   | { type: 'retract'; text: string; reason?: string }
   | { type: 'error'; code: string; message: string }
-  | { type: 'done'; intent?: string; fallback_layer?: number | null };
+  | { type: 'done'; session_id?: string; intent?: string; fallback_layer?: number | null };
 
 export type DocumentStatus =
   | 'pending'

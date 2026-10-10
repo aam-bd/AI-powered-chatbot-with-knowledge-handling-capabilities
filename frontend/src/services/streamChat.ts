@@ -2,10 +2,11 @@ import { ChatStreamEvent, CitationItem } from '@/types/chat';
 import { API_BASE_URL, getAccessToken, refreshAccessToken } from './api';
 
 export async function* streamChat(
-  sessionId: string,
-  message: string,
+  sessionId?: string | null,
+  message?: string,
   initialToken?: string
 ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+  const userText = message || '';
   let token = initialToken || getAccessToken();
 
   if (!token) {
@@ -17,6 +18,13 @@ export async function* streamChat(
     return;
   }
 
+  const requestBody: { message: string; session_id?: string } = {
+    message: userText,
+  };
+  if (sessionId) {
+    requestBody.session_id = sessionId;
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/chat/stream`, {
@@ -25,10 +33,7 @@ export async function* streamChat(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        message,
-        session_id: sessionId,
-      }),
+      body: JSON.stringify(requestBody),
     });
   } catch (err: any) {
     yield {
@@ -51,10 +56,7 @@ export async function* streamChat(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            message,
-            session_id: sessionId,
-          }),
+          body: JSON.stringify(requestBody),
         });
       } catch (err: any) {
         yield {
@@ -91,6 +93,8 @@ export async function* streamChat(
     };
     return;
   }
+
+  const headerSessionId = response.headers.get('x-session-id') || response.headers.get('X-Session-ID');
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
@@ -160,6 +164,7 @@ export async function* streamChat(
             case 'done':
               yield {
                 type: 'done',
+                session_id: parsed.session_id || headerSessionId || sessionId || undefined,
                 intent: parsed.intent,
                 fallback_layer: parsed.fallback_layer,
               };

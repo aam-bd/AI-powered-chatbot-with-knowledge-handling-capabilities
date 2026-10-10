@@ -603,7 +603,10 @@ def test_pipeline_llm_stream_error(client: TestClient, monkeypatch):
 async def test_pipeline_query_logs_persisted(client: TestClient, monkeypatch):
     """Verify that query execution writes an audit row to query_logs with latencies, scores, and chunk IDs."""
     headers, user_id = get_auth_headers(client)
-    unique_sess = f"sess-log-{uuid.uuid4().hex[:8]}"
+    from app.services.session_manager import get_session_manager
+    session_manager = get_session_manager()
+    chat_sess = await session_manager.get_or_create_session(user_id=user_id, initial_title="query log test")
+    unique_sess = str(chat_sess.id)
 
     router_adapter = FakeStreamAdapter(
         complete_text=json.dumps({"intent": "SEARCH", "clarification_message": None, "standalone_query": "query log test"})
