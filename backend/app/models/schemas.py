@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
 
 
 class ErrorResponse(BaseModel):
@@ -59,6 +59,18 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserAdminUpdateRequest(BaseModel):
+    """Payload for administrator updating user role or active status."""
+    role: Optional[str] = Field(None, pattern="^(user|admin)$", description="User role ('user' | 'admin')")
+    is_active: Optional[bool] = Field(None, description="Account active status")
+
+    @model_validator(mode="after")
+    def validate_at_least_one_field(self) -> "UserAdminUpdateRequest":
+        if self.role is None and self.is_active is None:
+            raise ValueError("At least one field ('role' or 'is_active') must be provided.")
+        return self
 
 
 class DocumentUrlCreateRequest(BaseModel):

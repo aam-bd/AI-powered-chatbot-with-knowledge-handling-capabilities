@@ -296,6 +296,10 @@ Acceptance: log in, chat, log out, log in again, and the conversation is there w
 ```text
 Task: Phase 7d, user management. Read architecture sections 8, 9.1 and 11. Implement GET /users and PATCH /users/{id} (change role, activate or deactivate), admin only. Rules: an admin cannot demote or deactivate themselves; the last active admin cannot be demoted or deactivated; deactivated users cannot log in or refresh; every change is logged without secrets. Frontend: an AdminUsers tab on the admin page with a users table and role change and activate/deactivate with confirmation.
 Tests (tests/test_users_admin.py): the rules above plus 403 for normal users. Run them.
+
+Deactivation and role changes must take effect immediately. Right now access tokens last 30 minutes, so a deactivated or demoted user could keep working until expiry. Say: “get_current_user must load the user from PostgreSQL on every request and check is_active and the current role (never trust the role claim in the JWT), and deactivation must also revoke the user’s refresh tokens.”
+“The last-admin check must be race-safe (do it in a transaction with a row lock).”
+Add a test: a deactivated user’s still-valid access token gets 401 or 403 on the next request.
 ```
 
 ---
@@ -309,7 +313,11 @@ Task: Phase 7e, wrap-up.
 3. Write README.md: overview, architecture diagram, setup, environment variables (with LLM provider presets), seeding the admin, registration, supported formats and limits, a privacy note (what is stored: chat history and query logs), running tests and evaluation, API overview with a /docs link, evaluation results, known limitations, and a short demo script (upload, ask, update the document, ask again, delete, ask again).
 4. Fill docs/decisions.md.
 5. Update docs/audit.md so every finding is marked fixed or accepted with a reason.
-Acceptance: show me the final test and eval output and the README.
+6. Eval set size: your report claims 100% accuracy, but that’s on 3 held-out items, which won’t hold up to scrutiny. Add: “Expand eval/test_set.json to at least 30 items (in-scope, multi-turn follow-ups, out-of-scope, topical-but-not-in-KB, and prompt-injection attempts like ‘ignore the context and answer from your knowledge’). Report results per category, including failures.” Keep calibration and test data separate.
+7. Docs vs. config: “Make README, architecture doc and report match the real configuration.” Your /health endpoint shows bge-m3 and bge-reranker-v2-m3, while the report says bge-large-en-v1.5 and bge-reranker-base.
+8. Claims: replace “mathematically guarantees” with something defensible, such as “multi-layer grounding checks substantially reduce hallucination; evaluated on N items.”
+9. Clean start: add docker compose down -v before the fresh-clone test so no old volumes hide problems. Also confirm no real keys or credentials are in the repo or git history, and that the README contains no demo passwords.
+
 ```
 
 ---

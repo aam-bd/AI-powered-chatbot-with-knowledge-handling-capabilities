@@ -2,10 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7c (Persistent chat history - Complete)
-- Last completed task: Prompt 7c: Persistent chat history (chat_sessions, chat_messages, Alembic migration 002, Redis window rebuilding from PostgreSQL, sidebar conversation management with rename/delete, full history and interactive citations restoration on session select, and client state cleanup on logout)
-- Next up: Prompt 7d: Admin user management
-- Status: Phase 7c Complete, 91/91 Tests Passing
+- Current phase: 7d (Admin user management - Complete)
+- Last completed task: Prompt 7d: Admin user management (Implemented GET /users, PATCH /users/{id}, immediate token/role invalidation, race-safe last-admin protection with row locks, refresh token revocation, AdminUsers frontend tab, and 12-test suite)
+- Next up: Prompt 7e: Final evaluation, README and clean start
+- Status: Phase 7d Complete, 103/103 Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -19,7 +19,7 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 7a Full Audit (docs/audit.md)
 - [x] 7b Security fixes, registration and account features
 - [x] 7c Persistent chat history
-- [ ] 7d Admin user management
+- [x] 7d Admin user management
 - [ ] 7e Final evaluation, README and clean start
 
 ## Requirements status (from architecture §1.1)
@@ -27,6 +27,7 @@ C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
 G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-11: Admin user management (Phase 7d) - implemented race-safe last active admin protection using PostgreSQL row-level locks (`select(User)...where(User.role == 'admin', User.is_active == True).with_for_update()`) inside an atomic transaction. Enforced immediate token invalidation on every request via `get_current_user` reading live `is_active` status and role from PostgreSQL, and instant refresh token revocation via Redis keys (`user_revoked:{user_id}`).
 - 2026-10-10: Persistent chat history (Phase 7c) - implemented server-assigned UUID session generation for unknown or non-UUID client session IDs, while strictly returning HTTP 404 for session IDs belonging to another user. Retained Redis as sliding 24h cache window with automatic PostgreSQL hydration on cache miss or restart.
 - 2026-10-06: Implemented strict evaluation dataset isolation in `calibrate_threshold.py` enforcing that calibration sweeps exclusively inspect `calibration_set.json` and raise hard errors if pointed to `test_set.json`.
 - 2026-10-06: Implemented `run_eval.py` benchmarking running API with Redis multi-turn conversation memory priming, SSE event streaming, facts verification, in-code citation structural verification, and optional labeled LLM-as-judge step (`gemini-3.1-flash-lite`).
@@ -50,6 +51,25 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-11 - Prompt 7d: Admin User Management (Phase 7d Complete)
+- **Goal:** Carry out Prompt 7d: Admin user management with endpoints `GET /api/v1/users` (paginated, newest first) and `PATCH /api/v1/users/{id}` (role modification, activation/deactivation), self-demotion and self-deactivation blocking (400), race-safe last-active-admin protection with row locking (400), immediate request-time invalidation in `get_current_user` (403 `USER_INACTIVE`), immediate refresh token revocation via Redis key `user_revoked:{user_id}`, secret-free structured audit logging, frontend `AdminUsers` tab on `/admin` page with confirmation modals and self-action disabling, and comprehensive test suite `test_users_admin.py`.
+- **Files Created/Modified:**
+  - `backend/app/models/schemas.py`: Added `UserAdminUpdateRequest` schema validating presence of `role` or `is_active`.
+  - `backend/app/core/security.py`: Updated `get_current_user` to check `if not user.is_active` and raise HTTP 403 `USER_INACTIVE` on every authenticated request.
+  - `backend/app/api/v1/auth.py`: Updated `refresh_token_endpoint` to verify `user_revoked:{user_id}` in Redis and enforce `user.is_active`.
+  - `backend/app/api/v1/users.py`: Implemented admin-only endpoints `GET /users` and `PATCH /users/{id}` with row-locked last-admin verification, self-demotion/deactivation guards, Redis refresh token revocation, and secret-free audit logging.
+  - `backend/app/api/router.py`: Mounted `users_router` at `/api/v1`.
+  - `backend/scripts/seed_admin.py`: Updated to ensure `user.is_active = True` if the admin user already exists.
+  - `backend/tests/test_lifecycle_consistency.py`: Updated `get_or_create_admin` helper to reactivate and re-grant admin role if the user exists in DB.
+  - `frontend/src/services/api.ts`: Added `fetchUsers` and `updateUser` API functions.
+  - `frontend/src/components/AdminUsers.tsx`: Built administrative users management table, role badges, active status toggles, confirmation modals, and disabled state for current user's row.
+  - `frontend/src/app/admin/page.tsx`: Added desktop and mobile tab navigation switching between Documents (`AdminDocManager`) and User Management (`AdminUsers`).
+  - `backend/tests/test_users_admin.py`: Created test suite with 12 tests covering all business rules and edge cases.
+- **Verification:**
+  - Automated tests: All 103 backend tests (`docker compose exec api pytest tests/ -v`) passed with zero errors in 155s.
+  - Container build: Standalone Next.js production container rebuilt cleanly and verified operational on port 3000 (HTTP 200).
+  - Live E2E script: Ran live API verification script against port 8000 verifying all 14 acceptance criteria.
+
 ### 2026-10-10 - Prompt 7c: Persistent Chat History (Phase 7c Complete)
 - **Goal:** Carry out Prompt 7c: Implement persistent chat history with PostgreSQL tables `chat_sessions` and `chat_messages` via Alembic migration `002_chat_history.py`, streaming message persistence (pre-generation user turn, post-generation assistant turn), server-assigned UUID session generation, foreign-session 404 isolation, owner-only REST endpoints (`GET /sessions`, `GET /sessions/{id}/messages`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}`), Redis sliding window cache with automatic PostgreSQL rehydration on cache miss or restart, sidebar conversation management (inline rename, delete confirmation, new chat), history message and interactive citation chip restoration, and client-side chat state wiping on logout.
 - **Files Created/Modified:**

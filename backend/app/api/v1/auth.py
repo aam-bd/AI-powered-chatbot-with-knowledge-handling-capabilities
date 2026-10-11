@@ -158,7 +158,8 @@ async def refresh_token_endpoint(
         from app.db.redis import redis_client
         try:
             is_revoked = await redis_client.get(f"revoked:{token_id}")
-            if is_revoked:
+            user_revoked = await redis_client.get(f"user_revoked:{user_id}")
+            if is_revoked or user_revoked:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Refresh token has been revoked",

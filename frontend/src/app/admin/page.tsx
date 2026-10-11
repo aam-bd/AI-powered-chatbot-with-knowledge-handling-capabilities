@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import AdminDocManager from '@/components/AdminDocManager';
+import AdminUsers from '@/components/AdminUsers';
 import {
   Shield,
   ShieldAlert,
@@ -11,11 +12,14 @@ import {
   LogOut,
   Sparkles,
   Loader2,
+  FileText,
+  Users,
 } from 'lucide-react';
 
 export default function AdminPage() {
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState<'documents' | 'users'>('documents');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -49,7 +53,7 @@ export default function AdminPage() {
             Administrator privileges required.
           </p>
           <p className="text-xs text-gray-500 leading-relaxed mb-6">
-            Your current account (<span className="text-gray-300">{user.email}</span>) does not have permission to manage knowledge base documents.
+            Your current account (<span className="text-gray-300">{user.email}</span>) does not have permission to access the administrator portal.
           </p>
           <button
             onClick={() => router.push('/')}
@@ -73,13 +77,43 @@ export default function AdminPage() {
           </div>
           <div>
             <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Admin Document Portal</span>
+              <span>Admin Management Portal</span>
               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
                 Admin
               </span>
             </h1>
-            <p className="text-[11px] text-gray-400">Knowledge Base Ingestion & Lifecycle</p>
+            <p className="text-[11px] text-gray-400">
+              {activeTab === 'documents'
+                ? 'Knowledge Base Ingestion & Lifecycle'
+                : 'User Access, Roles & Permissions'}
+            </p>
           </div>
+        </div>
+
+        {/* Center Tab Switcher */}
+        <div className="hidden md:flex items-center gap-1 bg-gray-900/80 p-1 rounded-xl border border-gray-800">
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'documents'
+                ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Documents</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'users'
+                ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>User Management</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -110,9 +144,35 @@ export default function AdminPage() {
         </div>
       </header>
 
+      {/* Mobile Tab Switcher */}
+      <div className="md:hidden flex items-center justify-around border-b border-gray-800 bg-gray-900/50 p-2">
+        <button
+          onClick={() => setActiveTab('documents')}
+          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'documents'
+              ? 'bg-emerald-500 text-gray-950 font-bold'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Documents</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'users'
+              ? 'bg-emerald-500 text-gray-950 font-bold'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Users</span>
+        </button>
+      </div>
+
       {/* Main Content Area */}
       <main className="flex-1 p-6 md:p-8">
-        <AdminDocManager />
+        {activeTab === 'documents' ? <AdminDocManager /> : <AdminUsers />}
       </main>
     </div>
   );

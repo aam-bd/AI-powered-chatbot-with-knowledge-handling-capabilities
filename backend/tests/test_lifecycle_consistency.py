@@ -43,6 +43,11 @@ async def get_or_create_admin():
             session.add(user)
             await session.commit()
             await session.refresh(user)
+        elif not user.is_active or user.role != "admin":
+            user.is_active = True
+            user.role = "admin"
+            await session.commit()
+            await session.refresh(user)
         return user
 
 

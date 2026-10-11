@@ -1,4 +1,4 @@
-import { TokenResponse, User, SessionSummary, ChatMessageItem, DocumentItem } from '@/types/chat';
+import { TokenResponse, User, UserRole, SessionSummary, ChatMessageItem, DocumentItem } from '@/types/chat';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -341,4 +341,39 @@ export async function getDocumentStatus(docId: string): Promise<any> {
   }
   return res.json();
 }
+
+/**
+ * Fetches registered users for administrators.
+ */
+export async function fetchUsers(skip = 0, limit = 50): Promise<User[]> {
+  const res = await fetchWithAuth(`/users?skip=${skip}&limit=${limit}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch users');
+  }
+  return res.json();
+}
+
+/**
+ * Updates a user's role or active status (admin only).
+ */
+export async function updateUser(
+  userId: string,
+  data: { role?: UserRole; is_active?: boolean }
+): Promise<User> {
+  const res = await fetchWithAuth(`/users/${userId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  const resData = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(resData.detail || 'Failed to update user');
+  }
+  return resData;
+}
+
 

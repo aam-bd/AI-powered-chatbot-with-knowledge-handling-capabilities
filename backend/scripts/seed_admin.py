@@ -33,11 +33,12 @@ async def seed_admin(email: str = None, password: str = None) -> bool:
 
         if user:
             user.password_hash = hash_password(admin_pass)
+            user.is_active = True
             if user.role != "admin":
                 user.role = "admin"
-                logger.info(f"Promoted existing user {admin_email} to admin role and updated password.")
+                logger.info(f"Promoted existing user {admin_email} to admin role, set is_active=True, and updated password.")
             else:
-                logger.info(f"Admin user {admin_email} password updated.")
+                logger.info(f"Admin user {admin_email} activated and password updated.")
             await session.commit()
             return True
 
