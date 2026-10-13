@@ -35,19 +35,25 @@ from app.core.config import settings
 # 1. Base URL Validation & Key Masking Tests
 # ------------------------------------------------------------------------------
 
-def test_base_url_validation():
+def test_base_url_validation(monkeypatch):
     # Valid remote HTTPS
     assert validate_base_url("https://api.openai.com/v1/") == "https://api.openai.com/v1"
     assert validate_base_url("https://generativelanguage.googleapis.com/v1beta/openai/") == "https://generativelanguage.googleapis.com/v1beta/openai"
 
-    # Valid local / private HTTP
+    # Valid local / private HTTP when ALLOW_PRIVATE_LLM_URLS is enabled
+    monkeypatch.setattr(settings, "ALLOW_PRIVATE_LLM_URLS", True)
     assert validate_base_url("http://localhost:11434/v1") == "http://localhost:11434/v1"
     assert validate_base_url("http://127.0.0.1:8000/v1/") == "http://127.0.0.1:8000/v1"
     assert validate_base_url("http://192.168.1.100:8080/v1") == "http://192.168.1.100:8080/v1"
     assert validate_base_url("http://10.0.0.5:8000/v1") == "http://10.0.0.5:8000/v1"
 
+    # SSRF protection: when ALLOW_PRIVATE_LLM_URLS is False, private/loopback is blocked
+    monkeypatch.setattr(settings, "ALLOW_PRIVATE_LLM_URLS", False)
+    with pytest.raises(ValueError, match="SSRF Protection"):
+        validate_base_url("http://192.168.1.100:8080/v1")
+
     # Insecure remote HTTP must fail
-    with pytest.raises(ValueError, match="HTTPS is strictly required"):
+    with pytest.raises(ValueError, match="Insecure HTTP base URL"):
         validate_base_url("http://api.remote-llm.com/v1")
 
     # Invalid scheme

@@ -234,3 +234,103 @@ class TokenEventPayload(BaseModel):
     """Payload for SSE 'token' event."""
     text: str
 
+
+# ------------------------------------------------------------------------------
+# LLM Provider & Settings Schemas (Prompt 7e)
+# ------------------------------------------------------------------------------
+
+class LLMProviderCreate(BaseModel):
+    """Admin request to register a new LLM provider."""
+    name: str = Field(..., min_length=1, max_length=100)
+    provider_type: str = Field(..., min_length=1, max_length=50)
+    base_url: str = Field(..., min_length=1, max_length=500)
+    api_key: Optional[str] = Field(None, description="Plaintext API key; encrypted at rest")
+    models: List[str] = Field(..., min_length=1, description="List of supported model identifiers")
+    default_model: str = Field(..., min_length=1, max_length=100)
+    is_enabled: bool = True
+
+    @model_validator(mode="after")
+    def validate_models(self) -> "LLMProviderCreate":
+        if self.default_model not in self.models:
+            raise ValueError(f"default_model '{self.default_model}' must be in models list: {self.models}")
+        return self
+
+
+class LLMProviderUpdate(BaseModel):
+    """Admin request to update an existing LLM provider."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    base_url: Optional[str] = Field(None, min_length=1, max_length=500)
+    api_key: Optional[str] = Field(None, description="New API key (replaces existing if sent)")
+    models: Optional[List[str]] = Field(None, min_length=1)
+    default_model: Optional[str] = Field(None, min_length=1, max_length=100)
+    is_enabled: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_models(self) -> "LLMProviderUpdate":
+        if self.models is not None and self.default_model is not None:
+            if self.default_model not in self.models:
+                raise ValueError(f"default_model '{self.default_model}' must be in models list: {self.models}")
+        return self
+
+
+class LLMProviderResponse(BaseModel):
+    """Safe provider details representation for admin dashboard."""
+    id: uuid.UUID
+    name: str
+    provider_type: str
+    base_url: str
+    has_key: bool
+    key_hint: Optional[str] = None
+    models: List[str]
+    default_model: str
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    last_test_status: Optional[str] = None
+    last_test_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LLMProviderTestResponse(BaseModel):
+    """Response payload for provider test connection endpoint."""
+    success: bool
+    status: str
+    message: str
+    sanitized_error: Optional[str] = None
+
+
+class LLMModelsResponse(BaseModel):
+    """Available models response for a provider."""
+    provider_id: uuid.UUID
+    models: List[str]
+    source: str  # 'provider' | 'stored'
+
+
+class LLMSettingsResponse(BaseModel):
+    """Current runtime LLM selection and configuration settings."""
+    active_provider_id: uuid.UUID
+    active_model: str
+    fallback_provider_id: Optional[uuid.UUID] = None
+    fallback_model: Optional[str] = None
+    temperature: float
+    max_tokens: int
+    version: int
+    active_provider_name: Optional[str] = None
+    active_provider_type: Optional[str] = None
+    fallback_provider_name: Optional[str] = None
+    fallback_provider_type: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LLMSettingsUpdate(BaseModel):
+    """Admin request to change active/fallback LLM providers and generation parameters."""
+    active_provider_id: uuid.UUID
+    active_model: str = Field(..., min_length=1)
+    fallback_provider_id: Optional[uuid.UUID] = None
+    fallback_model: Optional[str] = None
+    temperature: float = Field(0.0, ge=0.0, le=2.0)
+    max_tokens: int = Field(1024, gt=0, le=32768)
+
+

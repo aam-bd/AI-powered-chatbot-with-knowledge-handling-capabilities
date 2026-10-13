@@ -46,6 +46,7 @@ from app.services.llm.base import (
     LLMTimeoutError,
     LLMAuthError,
 )
+from app.services.llm.runtime import runtime_llm_manager
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -316,28 +317,64 @@ async def chat_stream(
             doc_ids = list({c.document_id for c in context_chunks if c.document_id})
             doc_names = await _lookup_document_names(doc_ids)
 
-            # Stream generation through ANSWER model
-            adapter, answer_model = get_llm_adapter(role="answer")
-            gen_start = time.perf_counter()
-            token_stream = adapter.stream(
-                system=sys_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-                model=answer_model,
-                max_tokens=1024,
-                temperature=0.2,
-            )
+            # Stream generation through ANSWER model (Prompt 7e runtime settings & fallback)
+            from app.services.llm.factory import get_llm_adapter as _default_factory_adapter
+            runtime_config = await runtime_llm_manager.get_config()
+            if get_llm_adapter is not _default_factory_adapter:
+                adapter, answer_model = get_llm_adapter(role="answer")
+            elif runtime_config and runtime_config.active_adapter:
+                adapter = runtime_config.active_adapter
+                answer_model = runtime_config.active_model
+            else:
+                adapter, answer_model = get_llm_adapter(role="answer")
+            gen_temp = runtime_config.temperature if runtime_config else 0.2
+            gen_max_tokens = runtime_config.max_tokens if runtime_config else 1024
+            fallback_adapter = runtime_config.fallback_adapter if runtime_config else None
+            fallback_model = runtime_config.fallback_model if runtime_config else None
 
-            # Layer 2 Sentinel Buffering
-            buffered_stream = stream_with_sentinel_buffer(token_stream)
+            gen_start = time.perf_counter()
             accumulated_tokens: List[str] = []
             sentinel_hit = False
 
-            async for item in buffered_stream:
-                if isinstance(item, SentinelMatch):
-                    sentinel_hit = True
-                    break
-                accumulated_tokens.append(item)
-                yield _format_sse("token", {"text": item})
+            try:
+                token_stream = adapter.stream(
+                    system=sys_prompt,
+                    messages=[{"role": "user", "content": user_prompt}],
+                    model=answer_model,
+                    max_tokens=gen_max_tokens,
+                    temperature=gen_temp,
+                )
+                buffered_stream = stream_with_sentinel_buffer(token_stream)
+                async for item in buffered_stream:
+                    if isinstance(item, SentinelMatch):
+                        sentinel_hit = True
+                        break
+                    accumulated_tokens.append(item)
+                    yield _format_sse("token", {"text": item})
+            except LLMError as primary_exc:
+                if fallback_adapter and fallback_model and not accumulated_tokens:
+                    logger.warning(
+                        f"Active LLM provider stream failed ({type(primary_exc).__name__}). "
+                        f"Retrying once on fallback provider with model '{fallback_model}'."
+                    )
+                    token_stream = fallback_adapter.stream(
+                        system=sys_prompt,
+                        messages=[{"role": "user", "content": user_prompt}],
+                        model=fallback_model,
+                        max_tokens=gen_max_tokens,
+                        temperature=gen_temp,
+                    )
+                    buffered_stream = stream_with_sentinel_buffer(token_stream)
+                    accumulated_tokens = []
+                    sentinel_hit = False
+                    async for item in buffered_stream:
+                        if isinstance(item, SentinelMatch):
+                            sentinel_hit = True
+                            break
+                        accumulated_tokens.append(item)
+                        yield _format_sse("token", {"text": item})
+                else:
+                    raise primary_exc
 
             latency_generation = (time.perf_counter() - gen_start) * 1000.0
 

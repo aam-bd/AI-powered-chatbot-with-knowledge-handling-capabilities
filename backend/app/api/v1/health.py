@@ -11,7 +11,9 @@ from app.db.session import check_postgres_health
 from app.db.redis import check_redis_health
 from app.db.qdrant import check_qdrant_health
 
+from typing import Optional
 from app.services.rag_engine import CrossEncoderSingleton
+from app.services.llm.runtime import runtime_llm_manager
 
 router = APIRouter(tags=["health"])
 
@@ -22,6 +24,8 @@ class HealthResponse(BaseModel):
     redis: str
     qdrant: str
     llm_configured: bool
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
     embedding_model: str
     embedding_status: str
     reranker_model: str
@@ -47,12 +51,25 @@ async def health_check() -> HealthResponse:
 
     reranker_status = "ready" if CrossEncoderSingleton.is_loaded() else "configured"
 
+    # Evaluate dynamic database LLM configuration per Prompt 7e
+    runtime_config = await runtime_llm_manager.get_config()
+    if runtime_config is not None:
+        llm_configured = True
+        llm_provider = runtime_config.active_provider_name
+        llm_model = runtime_config.active_model
+    else:
+        llm_configured = settings.is_llm_configured()
+        llm_provider = settings.LLM_PROVIDER if llm_configured else None
+        llm_model = settings.ANSWER_MODEL if llm_configured else None
+
     return HealthResponse(
         status=status,
         postgres="healthy" if pg_healthy else "unhealthy",
         redis="healthy" if redis_healthy else "unhealthy",
         qdrant="healthy" if qdrant_healthy else "unhealthy",
-        llm_configured=settings.is_llm_configured(),
+        llm_configured=llm_configured,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
         embedding_model=settings.EMBEDDING_MODEL,
         embedding_status="ready",
         reranker_model=settings.RERANKER_MODEL,

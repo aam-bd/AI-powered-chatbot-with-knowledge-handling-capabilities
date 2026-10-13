@@ -62,16 +62,23 @@ def mask_api_key(key: Optional[str]) -> str:
     return f"{clean_key[:4]}...{clean_key[-4:]}"
 
 
-def validate_base_url(url: str) -> str:
-    """Validate and normalize provider base URL according to Architecture §6.9.
+def validate_base_url(url: str, allow_private: Optional[bool] = None) -> str:
+    """Validate and normalize provider base URL according to Architecture §6.9 and Prompt 7e.
 
     Rules:
-    - https is strictly required for remote hosts.
-    - http is permitted only for localhost, 127.0.0.1, ::1, or private IP networks (RFC 1918).
+    - https is strictly required in production.
+    - If allow_private is False (default in config): block private, loopback, link-local,
+      and reserved ranges after DNS resolution (SSRF defense).
+    - If allow_private is True: http is permitted only for localhost or RFC 1918 private IPs
+      in non-production environments (e.g. for local Ollama in dev).
+    - Insecure remote HTTP is strictly forbidden.
     - Trailing slashes are stripped/normalized.
     """
     if not url or not isinstance(url, str):
         raise ValueError("LLM base URL must be a non-empty string.")
+
+    from app.core.config import settings
+    from app.services.parsers.web import is_forbidden_ip
 
     cleaned_url = url.strip().rstrip("/")
     parsed = urllib.parse.urlparse(cleaned_url)
@@ -79,9 +86,40 @@ def validate_base_url(url: str) -> str:
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Scheme must be http or https.")
 
-    hostname = (parsed.hostname or "").lower()
+    hostname = (parsed.hostname or "").lower().strip()
     if not hostname:
         raise ValueError(f"Base URL '{url}' has no valid hostname.")
+
+    is_prod = settings.APP_ENV == "production"
+    if is_prod and parsed.scheme != "https":
+        raise ValueError("HTTPS is strictly required for LLM base URLs in production.")
+
+    effective_allow_private = (
+        allow_private if allow_private is not None else settings.ALLOW_PRIVATE_LLM_URLS
+    )
+
+    if not effective_allow_private:
+        # SSRF Protection: Reject private, loopback, and link-local addresses
+        if is_forbidden_ip(hostname):
+            raise ValueError(
+                f"SSRF Protection: Access to Private, loopback, or reserved IP '{hostname}' is forbidden for LLM base URL."
+            )
+        try:
+            import socket
+            addr_info = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+            resolved_ips = {item[4][0] for item in addr_info}
+            for ip_str in resolved_ips:
+                if is_forbidden_ip(ip_str):
+                    raise ValueError(
+                        f"SSRF Protection: Hostname '{hostname}' resolves to private or forbidden IP '{ip_str}'."
+                    )
+        except ValueError:
+            raise
+        except Exception as exc:
+            if is_prod:
+                raise ValueError(
+                    f"SSRF Protection: DNS resolution failed for hostname '{hostname}': {exc}"
+                ) from exc
 
     if parsed.scheme == "http":
         is_loopback = hostname in ("localhost", "127.0.0.1", "::1", "testclient")
@@ -91,7 +129,6 @@ def validate_base_url(url: str) -> str:
             if ip_obj.is_private or ip_obj.is_loopback:
                 is_private_ip = True
         except ValueError:
-            # Not an IP literal; might be a domain name like localhost or test host
             pass
 
         if not (is_loopback or is_private_ip):

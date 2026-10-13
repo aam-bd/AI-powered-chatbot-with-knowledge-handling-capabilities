@@ -26,7 +26,6 @@ def get_llm_adapter(role: str) -> Tuple[LLMAdapter, str]:
     normalized_role = role.lower().strip()
     if normalized_role not in ("router", "answer"):
         raise ValueError(f"Unknown LLM role '{role}'. Valid roles are 'router' and 'answer'.")
-
     timeout = float(settings.LLM_TIMEOUT_SECONDS)
     max_retries = int(settings.LLM_MAX_RETRIES)
 

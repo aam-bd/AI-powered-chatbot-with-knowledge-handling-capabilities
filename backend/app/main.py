@@ -46,6 +46,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning(f"Failed to initialize Qdrant collection on startup: {exc}")
 
+    # Bootstrap dynamic LLM provider and runtime settings (Prompt 7e)
+    try:
+        from app.services.llm.runtime import bootstrap_llm_settings, runtime_llm_manager
+        await bootstrap_llm_settings()
+        await runtime_llm_manager.get_config()
+    except Exception as exc:
+        logger.warning(f"Failed to bootstrap LLM settings on startup: {exc}")
+
     yield
     logger.info("Application shutting down.")
 

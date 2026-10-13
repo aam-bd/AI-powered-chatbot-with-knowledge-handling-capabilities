@@ -304,10 +304,68 @@ Add a test: a deactivated user’s still-valid access token gets 401 or 403 on t
 
 ---
 
-## Prompt 7e: Final evaluation, README and clean start
+## Prompt 7e: Admin LLM provider and API key management (recommended)
 
 ```text
-Task: Phase 7e, wrap-up.
+Task: Phase 7e, LLM provider management from the admin dashboard. Read architecture sections 6, 8, 9 and 11, and the provider adapter code. Do not change retrieval, guardrail or ingestion logic, and do not make the embedding or reranker models configurable (show them read-only).
+
+1. DATABASE
+- Table llm_providers: id (UUID), name (unique), provider_type, base_url, api_key_encrypted, models (JSONB list), default_model, is_enabled, created_at, updated_at, last_test_status, last_test_at.
+- Table llm_settings (single row): active_provider_id, active_model, fallback_provider_id (nullable), fallback_model (nullable), temperature, max_tokens, version (int, incremented on every change).
+- Alembic migration with working downgrade.
+- Encrypt API keys with Fernet (key from a new SETTINGS_ENCRYPTION_KEY env var; refuse to start if it is missing or invalid in production). Add it to .env.example with generation instructions.
+
+2. BOOTSTRAP
+- If llm_providers is empty on startup, seed one provider and the settings from the existing .env values (LLM_PROVIDER, base URL, key, model), so a clean start works with no manual steps. After that, the database is the source of truth.
+
+3. API (admin only; non-admins get 403)
+- GET /admin/llm/providers: list; keys are never returned, only a masked hint (last 4 chars) and has_key flag.
+- POST /admin/llm/providers: add (validated).
+- PATCH /admin/llm/providers/{id}: change name, URL, models, enabled; key replaced only if a new one is sent.
+- DELETE /admin/llm/providers/{id}: refuse if it is the active or fallback provider (409).
+- POST /admin/llm/providers/{id}/test: makes a minimal real completion call with a short timeout, stores last_test_status, returns success/failure with a sanitized error (never echoing the key).
+- GET /admin/llm/models?provider_id=: list available models from the provider if supported, otherwise the stored list.
+- GET/PUT /admin/llm/settings: choose active provider and model, optional fallback, temperature, max_tokens. Validate that the provider is enabled and the model belongs to it.
+- Base URL validation reuses the SSRF protections from web URL ingestion (https only in production, block private/loopback/link-local ranges, with an explicit ALLOW_PRIVATE_LLM_URLS=false flag so local Ollama can be allowed deliberately in dev).
+
+4. RUNTIME
+- The adapter reads the active provider and model from the database (cached, invalidated when settings.version changes, via Redis pub/sub or version check) so changes apply without restart, in both the API and Celery workers.
+- In-flight streams finish with the provider they started with.
+- If the active provider fails (timeout, 401, 429, 5xx) and a fallback is configured, retry once on the fallback; otherwise return the standard error event. Never expose keys or raw provider errors to the end user.
+- /health reports llm_configured based on the database state plus the active provider and model name (not the key).
+
+5. SECURITY
+- Every create, update, delete, test and settings change is written to an audit log (who, what, when) with secrets redacted.
+- Rate-limit the test endpoint.
+- Keys never appear in logs, exceptions, OpenAPI examples or frontend state after saving.
+
+6. FRONTEND (admin page, new "LLM Settings" tab)
+- Provider list with status badge (last test result), enabled toggle, edit and delete (with confirmation).
+- Add/Edit provider form: name, type preset (OpenAI-compatible, Gemini, Anthropic, OpenRouter, Ollama, custom), base URL (prefilled by preset), API key field (password input, shows masked hint, empty means unchanged), models, Test Connection button.
+- Active model selector (provider, then model dropdown), optional fallback selector, temperature and max_tokens.
+- Read-only card showing embedding and reranker models.
+- Clear success and error toasts; saving never reveals a key.
+
+7. TESTS (tests/test_llm_admin.py)
+- Non-admin gets 403 on all endpoints.
+- Keys are encrypted in the database and never present in any API response or log output.
+- CRUD works; deleting the active provider returns 409.
+- Settings validation rejects a model that does not belong to the provider.
+- SSRF: private/loopback URLs rejected unless explicitly allowed.
+- Hot reload: after changing the active model, the next chat request uses it with no restart (mock the provider).
+- Fallback is used when the primary fails; error events contain no secrets.
+- Bootstrap seeding from .env works on an empty table.
+All existing tests must still pass. Report the new total.
+
+Acceptance: from the admin UI, add a second provider, test it, switch the active model, and ask a question in chat that is answered by the new model with no restart; remove a key and see the clear failure state. Show screenshots if you can use the browser.
+```
+
+---
+
+## Prompt 7f: Final evaluation, README and clean start
+
+```text
+Task: Phase 7f, wrap-up.
 1. Run the full test suite and the evaluation (calibrate on the calibration set, then run the test set). Record the real results in docs/eval-report.md, including failures.
 2. Verify a clean start from a fresh clone with only .env created from .env.example: docker compose up works, the admin is seeded from .env, a new user can register, documents upload through the UI, and chat works with history kept after logout.
 3. Write README.md: overview, architecture diagram, setup, environment variables (with LLM provider presets), seeding the admin, registration, supported formats and limits, a privacy note (what is stored: chat history and query logs), running tests and evaluation, API overview with a /docs link, evaluation results, known limitations, and a short demo script (upload, ask, update the document, ask again, delete, ask again).

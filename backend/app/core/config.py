@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2
 
+    # Dynamic LLM Provider Management & Security (Phase 7e)
+    SETTINGS_ENCRYPTION_KEY: Optional[SecretStr] = None
+    ALLOW_PRIVATE_LLM_URLS: bool = False
+
     # --------------------------------------------------------------------------
     # Embeddings & Reranker Settings
     # --------------------------------------------------------------------------
@@ -173,6 +177,19 @@ class Settings(BaseSettings):
             template = self.GREETING_MESSAGE or "Hi! I can answer questions about {KB_TOPIC}. What would you like to know?"
             template = template.replace("[KB topic]", "{KB_TOPIC}")
             self.GREETING_MESSAGE = template.format(KB_TOPIC=self.KB_TOPIC)
+
+        if self.APP_ENV == "production":
+            if not self.SETTINGS_ENCRYPTION_KEY or not self.SETTINGS_ENCRYPTION_KEY.get_secret_value():
+                raise ValueError(
+                    "SETTINGS_ENCRYPTION_KEY is required in production! "
+                    "Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+                )
+            try:
+                from cryptography.fernet import Fernet
+                Fernet(self.SETTINGS_ENCRYPTION_KEY.get_secret_value().encode("utf-8"))
+            except Exception as exc:
+                raise ValueError(f"Invalid SETTINGS_ENCRYPTION_KEY in production: {exc}") from exc
+
         return self
 
     # --------------------------------------------------------------------------

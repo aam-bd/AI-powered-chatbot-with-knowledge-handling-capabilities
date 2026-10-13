@@ -42,7 +42,7 @@ class OpenAICompatAdapter(LLMAdapter):
 
         # Initialize AsyncOpenAI with custom base URL and manual retry control
         self.client = openai.AsyncOpenAI(
-            api_key=self.api_key,
+            api_key=self.api_key or "no-key-required",
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=0,  # We manage retries explicitly with backoff

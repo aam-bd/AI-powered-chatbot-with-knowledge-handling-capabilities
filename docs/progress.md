@@ -2,10 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7d (Admin user management - Complete)
-- Last completed task: Prompt 7d: Admin user management (Implemented GET /users, PATCH /users/{id}, immediate token/role invalidation, race-safe last-admin protection with row locks, refresh token revocation, AdminUsers frontend tab, and 12-test suite)
-- Next up: Prompt 7e: Final evaluation, README and clean start
-- Status: Phase 7d Complete, 103/103 Tests Passing
+- Current phase: 7e (Admin LLM provider and API key management - Backend & Runtime Complete)
+- Last completed task: Prompt 7e Sections 1-5 & 7: Admin LLM provider & settings tables (Alembic migration 003), Fernet encryption at rest, SSRF protection with ALLOW_PRIVATE_LLM_URLS, CRUD API under /api/v1/admin/llm, connection test endpoint with rate limiting, bootstrap seeding from .env, Redis runtime version invalidation & hot reload, streaming fallback retry, /health reporting, and 10 new backend tests (113 total tests passing).
+- Next up: Prompt 7e Section 6: Frontend LLM Settings tab (Waiting for user approval before starting frontend)
+- Status: Phase 7e Backend Complete, 113/113 Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -20,13 +20,16 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 7b Security fixes, registration and account features
 - [x] 7c Persistent chat history
 - [x] 7d Admin user management
-- [ ] 7e Final evaluation, README and clean start
+- [x] 7e Admin LLM provider and API key management (Backend & Runtime Complete)
+- [ ] 7e Frontend LLM Settings tab
+- [ ] 7f Final evaluation, README and clean start
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
 G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 
 ## Decisions and deviations from architecture.md
+- 2026-10-13: Admin LLM provider and API key management (Phase 7e Backend) - implemented Fernet symmetric encryption at rest for API keys (`SETTINGS_ENCRYPTION_KEY` env var; startup halted in production if invalid/missing). Created `llm_providers` and single-row `llm_settings` with migration `003_llm_providers`. Implemented SSRF validation for provider URLs (`ALLOW_PRIVATE_LLM_URLS` flag). Implemented bootstrap seeding on empty DB from `.env`, Redis pub/version-check cache invalidation for hot-reload in API and Celery workers, connection testing with rate limiting (10 req/min), sanitized error reporting, secret-free audit logging, and one-time fallback retry for chat generation without secret leaks.
 - 2026-10-11: Admin user management (Phase 7d) - implemented race-safe last active admin protection using PostgreSQL row-level locks (`select(User)...where(User.role == 'admin', User.is_active == True).with_for_update()`) inside an atomic transaction. Enforced immediate token invalidation on every request via `get_current_user` reading live `is_active` status and role from PostgreSQL, and instant refresh token revocation via Redis keys (`user_revoked:{user_id}`).
 - 2026-10-10: Persistent chat history (Phase 7c) - implemented server-assigned UUID session generation for unknown or non-UUID client session IDs, while strictly returning HTTP 404 for session IDs belonging to another user. Retained Redis as sliding 24h cache window with automatic PostgreSQL hydration on cache miss or restart.
 - 2026-10-06: Implemented strict evaluation dataset isolation in `calibrate_threshold.py` enforcing that calibration sweeps exclusively inspect `calibration_set.json` and raise hard errors if pointed to `test_set.json`.
@@ -51,7 +54,24 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
-### 2026-10-11 - Prompt 7d: Admin User Management (Phase 7d Complete)
+### 2026-10-13 - Prompt 7e: Admin LLM Provider & Settings (Backend & Runtime Complete)
+- **Goal:** Carry out Prompt 7e sections 1-5 (Database, Bootstrap, API, Runtime, Security) and section 7 (Backend Tests) for admin LLM provider and API key management without touching frontend.
+- **Files Created/Modified:**
+  - `backend/app/core/crypto.py`: Created Fernet encryption/decryption utilities (`encrypt_api_key`, `decrypt_api_key`, `get_key_hint`, dev fallbacks, production validation).
+  - `backend/app/core/config.py`: Added `SETTINGS_ENCRYPTION_KEY` and `ALLOW_PRIVATE_LLM_URLS` settings with production validation in `validate_relationships`.
+  - `.env` & `.env.example`: Added default key and documented production generation instructions (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
+  - `backend/requirements.txt`: Pinned `cryptography>=42.0.0`.
+  - `backend/app/models/sql_models.py`: Added `LLMProvider` and single-row `LLMSettings` ORM models.
+  - `backend/app/db/migrations/versions/003_llm_providers.py`: Created migration; verified live upgrade and downgrade.
+  - `backend/app/models/schemas.py`: Added provider CRUD, test connection, models, and settings Pydantic schemas.
+  - `backend/app/services/llm/runtime.py`: Implemented `RuntimeLLMManager` (Redis version tracking, caching, adapter construction, fallback execution) and `bootstrap_llm_settings()`.
+  - `backend/app/api/v1/admin_llm.py`: Implemented admin API suite: `GET/POST /providers`, `PATCH/DELETE /providers/{id}` (409 guard if active/fallback), `POST /providers/{id}/test` (rate-limited, sanitized error), `GET /models`, `GET/PUT /settings` with SSRF base URL protection.
+  - `backend/app/api/router.py`: Mounted admin LLM endpoints.
+  - `backend/app/api/v1/health.py`: Updated `/health` response with `llm_configured`, `llm_provider`, `llm_model` from database runtime.
+  - `backend/app/api/v1/chat.py`: Connected runtime settings and automatic fallback stream retry on `LLMError`.
+  - `backend/tests/test_llm_admin.py`: Created comprehensive 10-test suite covering permissions (403), key encryption, CRUD & 409 deletion guards, settings validation, SSRF URL blocking, hot reload, fallback retry with secret sanitization, and bootstrap seeding.
+- **Verification:** Full test suite passes: 113/113 tests passing. Live API `/health` verified reporting `llm_configured: true`.
+
 - **Goal:** Carry out Prompt 7d: Admin user management with endpoints `GET /api/v1/users` (paginated, newest first) and `PATCH /api/v1/users/{id}` (role modification, activation/deactivation), self-demotion and self-deactivation blocking (400), race-safe last-active-admin protection with row locking (400), immediate request-time invalidation in `get_current_user` (403 `USER_INACTIVE`), immediate refresh token revocation via Redis key `user_revoked:{user_id}`, secret-free structured audit logging, frontend `AdminUsers` tab on `/admin` page with confirmation modals and self-action disabling, and comprehensive test suite `test_users_admin.py`.
 - **Files Created/Modified:**
   - `backend/app/models/schemas.py`: Added `UserAdminUpdateRequest` schema validating presence of `role` or `is_active`.

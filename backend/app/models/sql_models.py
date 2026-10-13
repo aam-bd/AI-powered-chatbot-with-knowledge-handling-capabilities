@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     text,
+    CheckConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -325,4 +326,125 @@ class ChatMessageRecord(Base):
     __table_args__ = (
         Index("ix_chat_messages_session_id_created_at", "session_id", "created_at"),
     )
+
+
+class LLMProvider(Base):
+    """Configured LLM providers and encrypted credentials (Prompt 7e)."""
+    __tablename__ = "llm_providers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    provider_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )  # 'openai_compatible' | 'anthropic' | 'gemini' | 'openrouter' | 'ollama' | 'custom'
+    base_url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+    api_key_encrypted: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    models: Mapped[list] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
+    )
+    default_model: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+    last_test_status: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+    )  # 'success' | 'failed'
+    last_test_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class LLMSettings(Base):
+    """Runtime LLM settings singleton row (Prompt 7e). Single row constrained to id=1."""
+    __tablename__ = "llm_settings"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        default=1,
+    )
+    active_provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("llm_providers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    active_model: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    fallback_provider_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("llm_providers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    fallback_model: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    temperature: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        nullable=False,
+    )
+    max_tokens: Mapped[int] = mapped_column(
+        Integer,
+        default=1024,
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False,
+    )
+
+    # Relationships
+    active_provider: Mapped["LLMProvider"] = relationship(
+        "LLMProvider",
+        foreign_keys=[active_provider_id],
+    )
+    fallback_provider: Mapped[Optional["LLMProvider"]] = relationship(
+        "LLMProvider",
+        foreign_keys=[fallback_provider_id],
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_llm_settings_single_row"),
+    )
+
 
