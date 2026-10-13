@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import AdminDocManager from '@/components/AdminDocManager';
 import AdminUsers from '@/components/AdminUsers';
+import AdminLLMManager from '@/components/AdminLLMManager';
 import {
   Shield,
   ShieldAlert,
@@ -14,12 +15,13 @@ import {
   Loader2,
   FileText,
   Users,
+  Cpu,
 } from 'lucide-react';
 
 export default function AdminPage() {
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'documents' | 'users'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'users' | 'llm'>('documents');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -85,7 +87,9 @@ export default function AdminPage() {
             <p className="text-[11px] text-gray-400">
               {activeTab === 'documents'
                 ? 'Knowledge Base Ingestion & Lifecycle'
-                : 'User Access, Roles & Permissions'}
+                : activeTab === 'users'
+                ? 'User Access, Roles & Permissions'
+                : 'LLM Providers, Runtime Model & API Keys'}
             </p>
           </div>
         </div>
@@ -113,6 +117,18 @@ export default function AdminPage() {
           >
             <Users className="w-3.5 h-3.5" />
             <span>User Management</span>
+          </button>
+          <button
+            id="admin-tab-llm"
+            onClick={() => setActiveTab('llm')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'llm'
+                ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>LLM Settings</span>
           </button>
         </div>
 
@@ -168,11 +184,28 @@ export default function AdminPage() {
           <Users className="w-3.5 h-3.5" />
           <span>Users</span>
         </button>
+        <button
+          onClick={() => setActiveTab('llm')}
+          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'llm'
+              ? 'bg-emerald-500 text-gray-950 font-bold'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Cpu className="w-3.5 h-3.5" />
+          <span>LLM</span>
+        </button>
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 p-6 md:p-8">
-        {activeTab === 'documents' ? <AdminDocManager /> : <AdminUsers />}
+        {activeTab === 'documents' ? (
+          <AdminDocManager />
+        ) : activeTab === 'users' ? (
+          <AdminUsers />
+        ) : (
+          <AdminLLMManager />
+        )}
       </main>
     </div>
   );

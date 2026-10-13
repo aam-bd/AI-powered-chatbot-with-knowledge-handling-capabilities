@@ -322,15 +322,19 @@ async def chat_stream(
             runtime_config = await runtime_llm_manager.get_config()
             if get_llm_adapter is not _default_factory_adapter:
                 adapter, answer_model = get_llm_adapter(role="answer")
+                fallback_adapter = None
+                fallback_model = None
             elif runtime_config and runtime_config.active_adapter:
                 adapter = runtime_config.active_adapter
                 answer_model = runtime_config.active_model
+                fallback_adapter = runtime_config.fallback_adapter
+                fallback_model = runtime_config.fallback_model
             else:
                 adapter, answer_model = get_llm_adapter(role="answer")
+                fallback_adapter = None
+                fallback_model = None
             gen_temp = runtime_config.temperature if runtime_config else 0.2
             gen_max_tokens = runtime_config.max_tokens if runtime_config else 1024
-            fallback_adapter = runtime_config.fallback_adapter if runtime_config else None
-            fallback_model = runtime_config.fallback_model if runtime_config else None
 
             gen_start = time.perf_counter()
             accumulated_tokens: List[str] = []

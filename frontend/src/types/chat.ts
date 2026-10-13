@@ -87,3 +87,87 @@ export interface DocumentItem {
   updated_at: string;
 }
 
+export interface LLMProvider {
+  id: string;
+  name: string;
+  provider_type: string;
+  base_url: string;
+  has_key?: boolean;
+  key_hint?: string | null;
+  has_api_key?: boolean;
+  api_key_masked_hint?: string | null;
+  models?: string[];
+  default_model: string;
+  is_enabled?: boolean;
+  is_active?: boolean;
+  is_fallback?: boolean;
+  created_at: string;
+  updated_at: string;
+  last_test_status?: 'success' | 'failed' | null;
+  last_test_at?: string | null;
+  last_tested_at?: string | null;
+  last_test_latency_ms?: number | null;
+  last_test_error?: string | null;
+}
+
+export interface LLMSettings {
+  active_provider_id: string;
+  active_model?: string;
+  fallback_provider_id: string | null;
+  fallback_model?: string | null;
+  temperature: number;
+  max_tokens: number;
+  timeout_seconds?: number;
+  version?: number;
+}
+
+export interface LLMProviderCreateInput {
+  name: string;
+  provider_type: string;
+  base_url: string;
+  api_key?: string;
+  models: string[];
+  default_model: string;
+  is_enabled?: boolean;
+}
+
+export interface LLMProviderUpdateInput {
+  name?: string;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  models?: string[];
+  default_model?: string;
+  is_enabled?: boolean;
+}
+
+export interface LLMTestResult {
+  success: boolean;
+  status: string;
+  message: string;
+  sanitized_error?: string | null;
+}
+
+export interface LLMModelsResult {
+  provider_id: string;
+  models: string[];
+  source?: 'provider' | 'stored';
+  cached?: boolean;
+}
+
+export interface HealthInfo {
+  status: string;
+  postgres?: string;
+  redis?: string;
+  qdrant?: string;
+  llm_configured?: boolean;
+  llm_provider?: string;
+  llm_model?: string;
+  embedding_model?: string;
+  embedding_status?: string;
+  reranker_model?: string;
+  reranker_status?: string;
+  version?: string;
+}
+
+

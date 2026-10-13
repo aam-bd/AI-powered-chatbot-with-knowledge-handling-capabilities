@@ -198,3 +198,29 @@ Based on the audit findings, remediation is structured into the following sequen
 2. **Dependency Updates:** Upgrade Next.js to secure patch release; generate and commit `package-lock.json`; upgrade container `setuptools`.
 3. **Clean-Start Verification:** Test fresh clone deployment from `.env.example`.
 4. **Production Documentation:** Finalize `README.md` with updated architecture diagrams, security guidelines, privacy disclosures, and demo walkthrough.
+
+---
+
+## Phase 7e: LLM Provider & Key Management Security Verification
+
+**Date:** 2026-10-13  
+**Status:** Verification Complete — All Controls Passed  
+**Coverage:** Prompt 7e Section 5 (Security) & Section 6 (Frontend Security Hygiene)
+
+### Security Verification Matrix
+
+| Control Area | Security Requirement | Implementation & Defense Mechanism | Verification Method & Status |
+|---|---|---|---|
+| **Encryption at Rest** | All API keys must be encrypted before persisting to DB. | AES-128-CBC via Fernet (`backend/app/core/encryption.py`), parameterized key `ENCRYPTION_KEY` via Docker secret / `.env`. | **PASSED**: Tested in `test_create_provider_encrypts_key`. DB column `api_key_encrypted` stores only ciphertext token starting with `gAAAAA...`. |
+| **Masked Key Hints** | Only masked hints (`••••<last-4>`) returned by API. Plain keys must NEVER be retrievable. | `mask_api_key()` helper in `encryption.py`. If key length ≤ 4, returns `••••`. | **PASSED**: Tested in `test_create_provider_encrypts_key`. `api_key_masked` always matches `••••<last-4>`. |
+| **Zero Secret Leakage in API** | Responses must never contain plaintext keys. | `LLMProviderRead` Pydantic schema strictly excludes `api_key`. Uses `has_api_key: bool` and `api_key_masked: Optional[str]`. | **PASSED**: Tested across all 13 `test_llm_admin.py` tests. Inspected `openapi.json` to confirm no secret fields in schema. |
+| **Zero Secret Leakage in Logs** | Loggers and audit trails must never print secrets. | All loggers use sanitized messages. `audit_logs` records only action metadata (`api_key_set: true/false`, `clear_api_key: true`). | **PASSED**: Inspected Loguru JSON output and `audit_logs` DB records. Plain keys are never logged. |
+| **Zero Secrets in Client Storage** | API keys must never be cached in client storage. | Frontend `AdminLLMManager.tsx` holds key only in local component state (`modalKey`), cleared on close/save. Never touches `localStorage` or `sessionStorage`. | **PASSED**: Verified in Vitest frontend suite (`AdminLLMManager.test.tsx`) and manual code inspection. |
+| **Input Masking** | API key input fields must obscure text by default. | Password input field `<input type="password" />` with an explicit toggle button to unmask input on demand. | **PASSED**: Tested in Vitest (`AdminLLMManager.test.tsx` test case 3). |
+| **Safe Key Updates & Clearing** | Leaving key empty during edit retains existing key. Key removal requires explicit `clear_api_key: true`. | PATCH endpoint ignores null/omitted `api_key`. Only deletes ciphertext if `clear_api_key: true`. | **PASSED**: Tested in `test_update_provider_without_changing_key` and `test_clear_api_key_on_inactive_provider`. |
+| **Active / Fallback Invariant Guard** | Cannot clear key or delete an active/fallback provider if it requires a key. | Backend throws HTTP 409 Conflict if `clear_api_key: true` or `DELETE` is called on the active or fallback provider without keyless support. | **PASSED**: Tested in `test_clear_api_key_on_active_provider_blocked_409` and `test_delete_active_provider_rejected`. |
+| **SSRF Protection** | Custom base URLs must not target internal or private network addresses unless explicitly enabled. | `is_safe_llm_base_url()` validates RFC 1918 subnets, loopbacks, link-local metadata endpoints (`169.254.169.254`), and multicast addresses. Configurable via `ALLOW_PRIVATE_LLM_URLS`. | **PASSED**: Tested in `test_create_provider_ssrf_blocked`. Returns 422 Unprocessable Entity. |
+| **Rate-Limited Testing** | Admin test endpoint must not be abused for outbound DDoS or credential brute-forcing. | `@limiter.limit("10/minute")` applied to `POST /api/v1/admin/llm/providers/{id}/test`. | **PASSED**: Tested in `test_test_provider_success` and Redis rate-limiter tests. |
+| **Sanitized Error Output** | Upstream provider test failures must not leak stack traces, internal URLs, or tokens. | `sanitize_llm_error_message()` strips authorization headers, token queries, file system paths, and internal IPs from external error strings. | **PASSED**: Tested in `test_test_provider_failure` and frontend error rendering in `AdminLLMManager.test.tsx`. |
+| **Non-Configurable Embeddings / Reranker** | Core embedding and cross-encoder models must remain immutable system models. | No admin APIs exist for embedding/reranker configuration. Displayed in UI as a read-only metadata card fetched from `/health`. | **PASSED**: Verified in `AdminLLMManager.tsx` and API route definitions. |
+

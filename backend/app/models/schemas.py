@@ -261,6 +261,7 @@ class LLMProviderUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     base_url: Optional[str] = Field(None, min_length=1, max_length=500)
     api_key: Optional[str] = Field(None, description="New API key (replaces existing if sent)")
+    clear_api_key: Optional[bool] = Field(False, description="Explicitly remove stored API key")
     models: Optional[List[str]] = Field(None, min_length=1)
     default_model: Optional[str] = Field(None, min_length=1, max_length=100)
     is_enabled: Optional[bool] = None

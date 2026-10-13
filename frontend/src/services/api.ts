@@ -1,4 +1,18 @@
-import { TokenResponse, User, UserRole, SessionSummary, ChatMessageItem, DocumentItem } from '@/types/chat';
+import {
+  TokenResponse,
+  User,
+  UserRole,
+  SessionSummary,
+  ChatMessageItem,
+  DocumentItem,
+  LLMProvider,
+  LLMSettings,
+  LLMProviderCreateInput,
+  LLMProviderUpdateInput,
+  LLMTestResult,
+  LLMModelsResult,
+  HealthInfo,
+} from '@/types/chat';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -375,5 +389,130 @@ export async function updateUser(
   }
   return resData;
 }
+
+/**
+ * Fetches all LLM providers for the admin dashboard.
+ */
+export async function fetchLLMProviders(): Promise<LLMProvider[]> {
+  const res = await fetchWithAuth('/admin/llm/providers');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch LLM providers');
+  }
+  return res.json();
+}
+
+/**
+ * Registers a new LLM provider.
+ */
+export async function createLLMProvider(payload: LLMProviderCreateInput): Promise<LLMProvider> {
+  const res = await fetchWithAuth('/admin/llm/providers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to create LLM provider');
+  }
+  return data;
+}
+
+/**
+ * Updates an existing LLM provider.
+ */
+export async function updateLLMProvider(
+  providerId: string,
+  payload: LLMProviderUpdateInput
+): Promise<LLMProvider> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to update LLM provider');
+  }
+  return data;
+}
+
+/**
+ * Deletes an LLM provider (refused if active or fallback).
+ */
+export async function deleteLLMProvider(providerId: string): Promise<void> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const err: any = new Error(data.detail || 'Failed to delete LLM provider');
+    err.status = res.status;
+    throw err;
+  }
+}
+
+/**
+ * Tests connection to an LLM provider with short timeout.
+ */
+export async function testLLMProvider(providerId: string): Promise<LLMTestResult> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}/test`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Connection test request failed');
+  }
+  return data;
+}
+
+/**
+ * Lists available models from the provider or stored list.
+ */
+export async function fetchLLMModels(providerId: string): Promise<LLMModelsResult> {
+  const res = await fetchWithAuth(`/admin/llm/models?provider_id=${providerId}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch models');
+  }
+  return res.json();
+}
+
+/**
+ * Fetches runtime LLM settings.
+ */
+export async function fetchLLMSettings(): Promise<LLMSettings> {
+  const res = await fetchWithAuth('/admin/llm/settings');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch LLM settings');
+  }
+  return res.json();
+}
+
+/**
+ * Updates active and fallback runtime LLM settings.
+ */
+export async function updateLLMSettings(payload: Partial<LLMSettings>): Promise<LLMSettings> {
+  const res = await fetchWithAuth('/admin/llm/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to update LLM settings');
+  }
+  return data;
+}
+
+/**
+ * Fetches backend health status and read-only embedding/reranker model info.
+ */
+export async function fetchHealth(): Promise<HealthInfo> {
+  const res = await fetch(`${API_BASE_URL}/health`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch system health');
+  }
+  return res.json();
+}
+
 
 

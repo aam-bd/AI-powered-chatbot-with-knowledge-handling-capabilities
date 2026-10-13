@@ -29,6 +29,7 @@ A chatbot that answers questions **only** from a custom, medium-size knowledge b
 | E1 | Persistent per-user chat history | Extension | `chat_sessions`, `chat_messages`, history endpoints and sidebar (§4.1, §7, §8, §11) |
 | E2 | Registration, logout, password change | Extension | Register page, token revocation, account page (§8, §9.1, §11) |
 | E3 | Admin user management | Extension | `GET/PATCH /users`, admin users tab (§8, §11) |
+| E4 | Admin LLM provider and API key management | Extension | `llm_providers`, `llm_settings`, Fernet encryption, admin LLM tab, hot reload (§4.1, §6.9, §8, §11) |
 
 ### 1.2 Non-goals
 
@@ -131,6 +132,12 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 **`chat_messages`**
 `id`, `session_id`, `role ('user' | 'assistant')`, `kind ('normal' | 'fallback' | 'clarification' | 'greeting' | 'error')`, `content`, `citations (json, nullable)`, `fallback_layer (nullable)`, `created_at`. Index on (`session_id`, `created_at`).
 
+**`llm_providers`**
+`id (uuid)`, `name (unique)`, `provider_type ('openai_compatible' | 'anthropic')`, `base_url`, `api_key_encrypted (nullable, Fernet)`, `default_model`, `is_active (bool)`, `is_fallback (bool)`, `last_tested_at (timestamp, nullable)`, `last_test_status ('success' | 'failed' | null)`, `last_test_latency_ms (int, nullable)`, `created_at`, `updated_at`.
+
+**`llm_settings`**
+Single-row table (`id = 1`): `active_provider_id (fk llm_providers.id)`, `active_model`, `fallback_provider_id (fk llm_providers.id, nullable)`, `fallback_model (nullable)`, `temperature (0.0-2.0, default 0.2)`, `max_tokens (1-8192, default 1024)`, `timeout_seconds (5-120, default 30)`, `version (bigint, monotonically increasing)`, `updated_at`.
+
 ### 4.2 Qdrant collection `kb_chunks`
 
 - **Vectors:** `dense` (dimension per embedding model, cosine) and `sparse` (BM25).
@@ -158,6 +165,8 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 | `session:{user_id}:{session_id}` | The router's window: last N messages (JSON). A cache, rebuilt from PostgreSQL when missing | 24 h, sliding |
 | `revoked:{token_id}` | Marker for a revoked refresh token | Remaining token lifetime |
 | `ratelimit:{route}:{identity}` | Counter | Window length |
+| `llm_settings_version` | Monotonic version integer of the active LLM settings | Persistent |
+| `llm_settings_channel` (channel) | Pub/Sub channel broadcasting version invalidation to API processes and Celery workers | Transient |
 | Celery broker keys | Managed by Celery | n/a |
 
 Because the key contains `user_id`, a user cannot read or delete another user's session by guessing an ID.
@@ -435,7 +444,15 @@ Base path: `/api/v1`. Documentation is generated automatically at `/docs` (Swagg
 | `DELETE /documents/{id}` | admin | Start two-phase delete |
 | `GET /users` | admin | List users |
 | `PATCH /users/{id}` | admin | Change role, activate or deactivate. Admins cannot demote or deactivate themselves, and the last active admin is protected |
-| `GET /health` | public | Postgres, Redis and Qdrant status |
+| `GET /admin/llm/providers` | admin | List configured LLM providers (masked key hints, never raw keys) |
+| `POST /admin/llm/providers` | admin | Register new LLM provider with Fernet-encrypted key and SSRF validation |
+| `PATCH /admin/llm/providers/{id}` | admin | Update provider details; optional key replacement or removal (`clear_api_key`) |
+| `DELETE /admin/llm/providers/{id}` | admin | Delete provider (blocked with 409 if active or fallback) |
+| `POST /admin/llm/providers/{id}/test` | admin | Rate-limited connection test (10 req/min) returning sanitized results |
+| `GET /admin/llm/providers/{id}/models` | admin | Fetch supported models dynamically from provider or fallback |
+| `GET /admin/llm/settings` | admin | Read current active and fallback LLM runtime settings |
+| `PUT /admin/llm/settings` | admin | Atomically update runtime settings, bump version, and trigger hot-reload |
+| `GET /health` | public | Postgres, Redis, Qdrant, and runtime LLM provider/model reporting |
 
 Standard error format: `{ "detail": "...", "code": "..." }` with correct HTTP status codes (`401`, `403`, `404`, `409` duplicate, `413` too large, `422`, `429`, `503`).
 
@@ -501,6 +518,7 @@ Next.js (App Router) with TypeScript and Tailwind.
 | UX | Loading and error states, responsive layout, disabled input while streaming |
 | History | `ChatHistorySidebar`: conversations from `GET /chat/sessions`, restore messages and citations, rename, delete, new chat. History persists across logout and login |
 | Admin users | `AdminUsers` tab: users table, role change and activate or deactivate with confirmation |
+| Admin LLM | `AdminLLMManager` tab: warning banner for unconfigured/failing active providers, active model and sampling parameters selector (temperature 0.0-2.0, max tokens 1-8192), provider presets (OpenAI, Gemini, Anthropic, OpenRouter, Ollama, Custom), CRUD provider modal with password-masked key input and hint display, test connection modal with rate limit feedback, key clearing modal with clear_api_key 409 guard, and read-only embedding/reranker architecture display. Visible and accessible to admins only |
 
 `services/streamChat.ts` implements fetch-based streaming with the bearer token and parses the events in §6.8.
 

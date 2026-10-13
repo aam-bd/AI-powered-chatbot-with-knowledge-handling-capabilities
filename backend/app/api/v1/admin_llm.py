@@ -196,12 +196,23 @@ async def update_provider(
                 )
         provider.is_enabled = payload.is_enabled
 
-    # API Key: replace only if a new string is sent
-    if payload.api_key is not None:
-        if payload.api_key.strip():
-            provider.api_key_encrypted = encrypt_api_key(payload.api_key)
-        else:
-            provider.api_key_encrypted = None
+    # API Key: explicit clear or update
+    key_cleared = False
+    key_updated = False
+    if payload.clear_api_key:
+        settings_res = await db.execute(select(LLMSettings).where(LLMSettings.id == 1))
+        cur_settings = settings_res.scalar_one_or_none()
+        if cur_settings and (cur_settings.active_provider_id == provider.id or cur_settings.fallback_provider_id == provider.id):
+            if provider.provider_type.lower() not in ("ollama", "local", "custom"):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot remove API key of active or fallback provider. Reassign active/fallback provider or provide a new key first.",
+                )
+        provider.api_key_encrypted = None
+        key_cleared = True
+    elif payload.api_key is not None and payload.api_key.strip():
+        provider.api_key_encrypted = encrypt_api_key(payload.api_key.strip())
+        key_updated = True
 
     provider.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -222,7 +233,8 @@ async def update_provider(
 
     logger.info(
         f"ADMIN_AUDIT: user_id={current_admin.id} action=UPDATE_LLM_PROVIDER "
-        f"provider_id={provider.id} is_enabled={provider.is_enabled}"
+        f"provider_id={provider.id} is_enabled={provider.is_enabled} "
+        f"key_updated={key_updated} key_cleared={key_cleared}"
     )
 
     return _mask_provider_response(provider)

@@ -361,6 +361,95 @@ Acceptance: from the admin UI, add a second provider, test it, switch the active
 ```
 
 ---
+## Prompt 7e-2: Model auto-discovery, preset providers, custom endpoint
+
+```text
+Task: extend Phase 7e to add model auto-discovery, preset providers, custom endpoint (unlimited base URL + key), cleaned-up provider listing, and usage tracking.
+Read the existing adapter code and the backend API so you understand what the runtime expects.
+Do not change the ingestion or reranker logic, and do not allow model selection from the frontend for the embedding and reranker models (keep them hidden and read-only).
+
+0. TEST ISOLATION AND CLEANUP (do this first)
+- The dev database contains fixture providers created by the Stage 1 tests (names like "Stream Reload Prov ...", "Clear Key Prov ...", "Active Key Prov ...") and one of them is the active provider. Find why tests write to the real database. Make backend tests use an isolated test database (or transaction rollback) so they can never modify dev data, and fix any teardown that leaves rows or changes llm_settings.
+- Provide a documented, admin-run or script-based way to remove the leftover fixtures and restore the active provider to the .env-seeded default. Do not delete anything automatically without telling me what will be removed.
+
+1. PRESET PROVIDERS (seeded in the database)
+- Add an idempotent seed that creates these presets if missing, disabled and with no key: OpenRouter (https://openrouter.ai/api/v1), OpenAI (https://api.openai.com/v1), Anthropic (https://api.anthropic.com/v1), Google AI Studio / Gemini (use the endpoint form the existing adapter expects; state which). You may also propose Groq, DeepSeek and Ollama (local) as optional presets and I will decide.
+- Add columns: is_preset (bool), preset_key (stable slug), docs_url, key_required (bool), and a discovery_kind (openai_models | openrouter_models | anthropic_models | gemini_native_models | static).
+- Seeding must never overwrite an admin's edits (URL, key, models, enabled state) and must run safely on every startup and in the clean-start flow. The existing .env bootstrap provider keeps working.
+- Presets can be edited (key, enabled, selected models) but not renamed away from their preset identity; deleting a preset is allowed, and the UI offers "Restore presets".
+- Custom endpoint: "Add custom provider" with name, base URL, API key (optional if key_required is false), and a discovery mode defaulting to openai_models (GET {base_url}/models). If discovery fails, allow manual model entry as a clearly labelled fallback.
+
+2. MODEL DISCOVERY
+- New endpoint POST /admin/llm/providers/{id}/discover (and a variant that accepts an unsaved base_url + key for the Add form, without persisting or logging the key) that calls the provider's real model-listing API using the stored/encrypted or just-submitted key, with a short timeout, SSRF validation, no redirects to private addresses, and the existing rate limit.
+- Normalize results into a common shape: model_id, display_name, context_length (input token limit), max_output_tokens, pricing (prompt/completion per 1M tokens) and capabilities, each nullable. Populate only what the provider actually returns (for example OpenRouter returns pricing and context_length; Gemini native listing returns input/output token limits; plain OpenAI and Anthropic listings return mostly ids and names). Never invent values and never ship hardcoded price tables.
+- Filter obviously non-chat models where the provider exposes capability data (embeddings, TTS, image, moderation); where it cannot be determined, show them all.
+- Store discovered models in a provider_models table (provider_id, model_id, display_name, context_length, max_output_tokens, price_prompt_per_1m, price_completion_per_1m, source = discovered|manual, discovered_at, is_enabled). Re-discovery upserts, marks models that disappeared as unavailable (do not delete silently), and preserves admin choices (enabled flag, manual price overrides).
+- Allow admin-entered manual price overrides per model (source = manual) for cost estimates where the provider does not supply prices.
+- Auto-discover on: saving a provider with a valid key, pressing "Refresh models", and Test Connection (a successful test also records discovered_count). Return a sanitized error on failure (401 invalid key, 403, 404 wrong base URL, timeout, rate limit, malformed response) with a plain-language hint; never echo keys or raw provider bodies.
+- Settings validation: active/fallback model must exist in provider_models and be enabled and available. Keep the old stored-models JSON only as migration source, then deprecate it.
+- Hot reload and version bump apply as before.
+
+3. FRONTEND (LLM Settings tab)
+- Provider cards/table show: preset logo-free label, status (no key / key set / tested ok / failed), discovered model count, last discovery time, and actions (Test, Refresh models, Edit, Delete).
+- Add/Edit form: choose preset or Custom; base URL (editable; prefilled and locked-with-unlock for presets), API key field with the existing secret rules, Test & Discover button, then a searchable, filterable model list with checkboxes to enable models, showing context length and price per 1M tokens when known ("not provided by this provider" otherwise), with an edit-price action for manual overrides.
+- The active-model and fallback dropdowns list only enabled, discovered models, with context length and price next to each when known; selecting max_tokens validates against the model's max output where known.
+- Clear states: discovering (spinner), discovery failed with hint, manual entry fallback, empty list.
+- Remove the old free-text model entry except as the labelled manual fallback.
+- Never render raw provider error text; never keep keys in state after save.
+
+4. USAGE AND COST TRACKING
+- Add an llm_usage table (timestamp, provider_id, model_id, prompt_tokens, completion_tokens, latency_ms, status, error_class) written after each chat generation using the token counts the provider returns (if a provider returns none, store null and mark estimated=false; do not guess). No prompt or answer text, no keys.
+- Expose GET /admin/llm/usage?range=24h|7d|30d with totals per provider/model: requests, tokens, errors, avg latency, and estimated cost computed only for models with a known price (otherwise null with reason). Show this in a "Usage" section in the LLM Settings tab.
+- Writing usage must never slow or break the SSE stream (async/best-effort, logged on failure).
+
+5. SECURITY
+- Discovery and usage endpoints are admin-only with immediate effect on deactivation/demotion, audit-logged (no secrets), rate-limited, SSRF-validated. Keys never appear in responses, logs, error messages, OpenAPI examples or browser storage.
+
+6. TESTS
+- Backend (mock the provider HTTP layer, no real keys): each discovery_kind parses correctly; pricing/context fields populated only when present; failure classes map to sanitized errors; no key leakage in any response or log; SSRF and redirect rules; seed idempotency and no overwrite of admin edits; re-discovery upsert and disappeared-model handling; manual price override survives re-discovery; settings validation rejects a model not in provider_models; usage rows written with null tokens when the provider returns none; cost null when no price; non-admin 403; test isolation proof (running the suite leaves the dev DB unchanged).
+- Frontend component tests: preset prefill and locked URL; discover button states; model list search and enable; price display fallback text; dropdowns only list enabled models; manual-entry fallback; key never prefilled or retained.
+- Run the complete backend and frontend suites; all existing tests must still pass.
+
+7. DOCS
+- Update architecture.md, progress.md, audit.md and OpenAPI descriptions. Note in docs which fields each provider really returns, so the limits (no price from OpenAI/Anthropic) are documented honestly.
+
+```
+---
+## Prompt 7e-3: Admin System Overview (full visibility and control)
+
+```text
+GOAL
+The admin dashboard should show everything about the running system in one place and allow safe control of what is safe to change at runtime.
+
+1. NEW "System" TAB (admin only), sections:
+- Service health: PostgreSQL, Redis, Qdrant, LLM, embedding and reranker status, app version (the same data as /api/v1/health, fetched through an admin endpoint), auto-refresh with a manual refresh button, last checked time, and latency per dependency.
+- API and endpoints: base URL, links to /, /docs, /redoc, /openapi.json and /api/v1/health, and a table of all registered routes (method, path, auth level), generated from the app's OpenAPI schema, not hand-written.
+- Vector database: Qdrant collection name, status, points count, dense dimension and sparse vector presence, indexed document count, active vs superseded versions, and storage/segment info if the Qdrant API provides it.
+- Retrieval and ranking architecture (read-only display): embedding model, sparse model, fusion method and RRF k, top-k values, reranker model, reranker threshold, chunk size and overlap, sliding history window, guardrail layers enabled, FALLBACK_MESSAGE text. Read from the live settings objects, not hardcoded strings.
+- Workers: Celery workers online, queue length, last beat run, last reconciler run and what it fixed, failed ingestion count.
+- LLM usage summary (from 7e-2): tokens, requests, errors and estimated cost where known.
+- Recent activity: last N audit-log entries (secrets redacted) and recent errors.
+- Chat quality indicators: fallback rate over 24h/7d, average retrieval score, queries with no sources (counts only; no message text unless I explicitly approve showing query text).
+
+2. RUNTIME-EDITABLE SETTINGS (stored in the database with version bump and hot reload, like llm_settings)
+- Allowed to edit with strict validation bounds: reranker threshold, retrieval top-k, reranker top-n, chat history window size, rate limits, SSE keepalive, upload size limit (within a hard cap).
+- Everything editable must be audit-logged (who, old value, new value), show the default, offer "Reset to default", and apply without restart in both API and Celery workers.
+- Lowering the reranker threshold weakens grounding: show a clear warning, enforce a minimum, and record the change prominently in the audit log.
+- Read-only (changing requires re-indexing or redeploy): embedding model, sparse model, vector dimension, chunk size/overlap, collection name, database URLs, secrets. Show them with a note explaining why.
+- Environment display uses an explicit allowlist of non-secret settings. Anything containing KEY, SECRET, PASSWORD, TOKEN or a credentialed URL is never shown, not even masked. Add a test that fails if a new setting is exposed without being on the allowlist.
+
+3. SECURITY
+- All endpoints admin-only with immediate effect on deactivation or demotion, rate-limited where they hit external services, no secrets in any response, log or UI state. Dependency checks use short timeouts and never block the page.
+
+4. TESTS
+- Backend: each section returns the expected shape with mocked dependencies; one dependency down degrades only its own card; allowlist test; secrets never present; validation bounds and reset-to-default; hot reload in API and a worker-side check; audit entries written; non-admin 403.
+- Frontend: sections render with loading/empty/error states; edit controls validate bounds; warning shown when lowering the threshold; read-only items cannot be edited; non-admin cannot see the tab.
+- Run the complete suites. All existing tests must still pass.
+
+5. DOCS
+- Update architecture.md, progress.md, audit.md, OpenAPI. Do not write the README yet.
+```
+---
 
 ## Prompt 7f: Final evaluation, README and clean start
 

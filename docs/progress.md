@@ -2,10 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7e (Admin LLM provider and API key management - Backend & Runtime Complete)
-- Last completed task: Prompt 7e Sections 1-5 & 7: Admin LLM provider & settings tables (Alembic migration 003), Fernet encryption at rest, SSRF protection with ALLOW_PRIVATE_LLM_URLS, CRUD API under /api/v1/admin/llm, connection test endpoint with rate limiting, bootstrap seeding from .env, Redis runtime version invalidation & hot reload, streaming fallback retry, /health reporting, and 10 new backend tests (113 total tests passing).
-- Next up: Prompt 7e Section 6: Frontend LLM Settings tab (Waiting for user approval before starting frontend)
-- Status: Phase 7e Backend Complete, 113/113 Tests Passing
+- Current phase: 7e (Admin LLM provider and API key management - Complete)
+- Last completed task: Prompt 7e Complete: Sections 1-4 Database/Bootstrap/API/Runtime, Section 5 Security verification pass (Fernet encryption at rest, zero secret leakage, SSRF validation, audit logging), Section 6 Frontend LLM Settings tab (`AdminLLMManager` mounted in `/admin`), and Section 7 Test Suite (116/116 backend pytest tests passing, 8/8 frontend vitest tests passing).
+- Next up: Prompt 7f (Final evaluation, README and clean start)
+- Status: Phase 7e Complete, 116 Backend Tests & 8 Frontend Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -20,8 +20,7 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 7b Security fixes, registration and account features
 - [x] 7c Persistent chat history
 - [x] 7d Admin user management
-- [x] 7e Admin LLM provider and API key management (Backend & Runtime Complete)
-- [ ] 7e Frontend LLM Settings tab
+- [x] 7e Admin LLM provider and API key management (Backend, Frontend, Tests, Security Complete)
 - [ ] 7f Final evaluation, README and clean start
 
 ## Requirements status (from architecture §1.1)
@@ -54,6 +53,22 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-13 - Prompt 7e: Admin LLM Provider & Settings (Stage 2: Frontend, Security Verification & Test Suite Complete)
+- **Goal:** Carry out Prompt 7e section 6 (Frontend LLM Settings tab), section 5 (Security verification pass), key removal (`clear_api_key`), and remaining section 7 tests (frontend RTL/Vitest suite and backend E2E hot-reload/failover suite).
+- **Files Created/Modified:**
+  - `backend/app/models/schemas.py`: Added `clear_api_key: Optional[bool] = Field(False)` to `LLMProviderUpdate`.
+  - `backend/app/api/v1/admin_llm.py`: Implemented `clear_api_key` handling with HTTP 409 guard blocking active/fallback providers from key removal unless keyless (Ollama), clearing ciphertext and recording secret-free audit log.
+  - `backend/app/api/v1/chat.py`: Isolated fallback resolution when `get_llm_adapter` is mocked in unit tests to ensure test isolation.
+  - `backend/tests/test_llm_admin.py`: Added `test_clear_api_key_on_inactive_provider`, `test_clear_api_key_on_active_provider_blocked_409`, and `test_admin_llm_end_to_end_hot_reload_and_failover` with try-finally database restoration (13/13 passing in module, 116/116 across backend repo).
+  - `frontend/src/types/chat.ts`: Updated `LLMProvider`, `LLMSettings`, `LLMProviderCreateInput`, `LLMProviderUpdateInput`, `LLMTestResult`, `LLMModelsResult`, and `HealthInfo` interfaces.
+  - `frontend/src/services/api.ts`: Added frontend API client functions (`fetchLLMProviders`, `createLLMProvider`, `updateLLMProvider`, `deleteLLMProvider`, `testLLMProvider`, `fetchLLMModels`, `fetchLLMSettings`, `updateLLMSettings`, `fetchHealth`).
+  - `frontend/src/components/AdminLLMManager.tsx`: Created complete, rich, aesthetic admin management component with unconfigured/disabled/failed active provider warning banners, runtime model selector with sampling controls (temperature, max tokens), provider presets (OpenAI, Gemini, Anthropic, OpenRouter, Ollama, Custom), CRUD provider modal with strict password masking, hint display, and "Fetch Models" helper, connection test modal with rate limit notice and sanitized error output, clear key modal with 409 guard, and read-only embedding/reranker architecture display.
+  - `frontend/src/app/admin/page.tsx`: Integrated third admin portal tab (`'documents' | 'users' | 'llm'`) with desktop and mobile switcher and role guard.
+  - `frontend/vitest.config.ts` & `frontend/src/test/setup.ts`: Configured Vitest + JSDOM + React Testing Library test runner in frontend.
+  - `frontend/src/components/__tests__/AdminLLMManager.test.tsx`: Created 8-test unit test suite covering role access denial, admin dashboard rendering, password input masking without prefill, edit mode masked hint badge and preservation of existing key on empty input, `clear_api_key` modal trigger, delete 409 error display, dynamic model fetching, and runtime settings save with hot reload confirmation.
+  - `docs/architecture.md`, `docs/progress.md`, `docs/audit.md`: Updated architecture documentation, progress tracking, and security audit log.
+- **Verification:** 116/116 backend pytest tests passing; 8/8 frontend vitest tests passing; `npx tsc --noEmit` clean with 0 errors.
+
 ### 2026-10-13 - Prompt 7e: Admin LLM Provider & Settings (Backend & Runtime Complete)
 - **Goal:** Carry out Prompt 7e sections 1-5 (Database, Bootstrap, API, Runtime, Security) and section 7 (Backend Tests) for admin LLM provider and API key management without touching frontend.
 - **Files Created/Modified:**
