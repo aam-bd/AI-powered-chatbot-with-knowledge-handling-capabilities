@@ -30,6 +30,8 @@ A chatbot that answers questions **only** from a custom, medium-size knowledge b
 | E2 | Registration, logout, password change | Extension | Register page, token revocation, account page (§8, §9.1, §11) |
 | E3 | Admin user management | Extension | `GET/PATCH /users`, admin users tab (§8, §11) |
 | E4 | Admin LLM provider and API key management | Extension | `llm_providers`, `llm_settings`, Fernet encryption, admin LLM tab, hot reload (§4.1, §6.9, §8, §11) |
+| E5 | Model auto-discovery, preset catalog, and usage tracking | Extension | Provider auto-discovery probes, presets, `provider_models` catalog, manual models, `llm_usage` tracking, cost estimation (§4.1, §6.9, §8, §11) |
+| E6 | Admin System Overview & Control | Extension | Service health with dependency latencies, API route registry, Qdrant stats, live architecture, Celery worker status, chat quality indicators, runtime settings hot-reload, audit logging, environment allowlist (§4.1, §8, §10, §11) |
 
 ### 1.2 Non-goals
 
@@ -133,7 +135,13 @@ Unique constraint on `sha256` among non-deleted documents (prevents duplicate up
 `id`, `session_id`, `role ('user' | 'assistant')`, `kind ('normal' | 'fallback' | 'clarification' | 'greeting' | 'error')`, `content`, `citations (json, nullable)`, `fallback_layer (nullable)`, `created_at`. Index on (`session_id`, `created_at`).
 
 **`llm_providers`**
-`id (uuid)`, `name (unique)`, `provider_type ('openai_compatible' | 'anthropic')`, `base_url`, `api_key_encrypted (nullable, Fernet)`, `default_model`, `is_active (bool)`, `is_fallback (bool)`, `last_tested_at (timestamp, nullable)`, `last_test_status ('success' | 'failed' | null)`, `last_test_latency_ms (int, nullable)`, `created_at`, `updated_at`.
+`id (uuid)`, `name (unique)`, `provider_type ('openai_compatible' | 'anthropic')`, `base_url`, `api_key_encrypted (nullable, Fernet)`, `default_model`, `is_active (bool)`, `is_fallback (bool)`, `is_preset (bool, default false)`, `preset_key (text, nullable)`, `is_enabled (bool, default true)`, `discovery_kind (text, default 'openai_models')`, `models (jsonb, default [])`, `last_tested_at (timestamp, nullable)`, `last_test_status ('success' | 'failed' | null)`, `last_test_latency_ms (int, nullable)`, `created_at`, `updated_at`.
+
+**`provider_models`**
+`id (uuid)`, `provider_id (fk llm_providers.id on delete cascade)`, `model_id (text)`, `display_name (text, nullable)`, `context_length (int, nullable)`, `max_output_tokens (int, nullable)`, `is_enabled (bool, default true)`, `is_available (bool, default true)`, `price_prompt_per_1m (float, nullable)`, `price_completion_per_1m (float, nullable)`, `metadata (jsonb, nullable)`, `created_at`, `updated_at`. Unique constraint on (`provider_id`, `model_id`).
+
+**`llm_usage`**
+`id (uuid)`, `user_id (fk users.id, nullable)`, `provider_id (fk llm_providers.id on delete cascade)`, `model_id (text)`, `prompt_tokens (int, nullable)`, `completion_tokens (int, nullable)`, `total_tokens (int, nullable)`, `latency_ms (int, nullable)`, `estimated_cost (float, nullable)`, `status ('success' | 'error')`, `created_at`. Indexes on `created_at`, (`provider_id`, `created_at`), (`user_id`, `created_at`).
 
 **`llm_settings`**
 Single-row table (`id = 1`): `active_provider_id (fk llm_providers.id)`, `active_model`, `fallback_provider_id (fk llm_providers.id, nullable)`, `fallback_model (nullable)`, `temperature (0.0-2.0, default 0.2)`, `max_tokens (1-8192, default 1024)`, `timeout_seconds (5-120, default 30)`, `version (bigint, monotonically increasing)`, `updated_at`.
@@ -446,12 +454,18 @@ Base path: `/api/v1`. Documentation is generated automatically at `/docs` (Swagg
 | `PATCH /users/{id}` | admin | Change role, activate or deactivate. Admins cannot demote or deactivate themselves, and the last active admin is protected |
 | `GET /admin/llm/providers` | admin | List configured LLM providers (masked key hints, never raw keys) |
 | `POST /admin/llm/providers` | admin | Register new LLM provider with Fernet-encrypted key and SSRF validation |
+| `POST /admin/llm/providers/restore-presets` | admin | Restore deleted or missing default preset providers (seeded disabled, no keys) |
+| `POST /admin/llm/providers/discover-unsaved` | admin | Probe and discover models for unsaved credentials before adding provider |
+| `POST /admin/llm/providers/{id}/discover` | admin | Probe upstream endpoint using saved provider credentials and reconcile catalog |
+| `GET /admin/llm/providers/{id}/models` | admin | Read provider model catalog (`provider_models` rows) |
+| `PATCH /admin/llm/providers/{id}/models/{model_id}` | admin | Toggle model enabled state or update custom price overrides |
+| `POST /admin/llm/providers/{id}/models/manual` | admin | Add manual model entry to provider catalog |
 | `PATCH /admin/llm/providers/{id}` | admin | Update provider details; optional key replacement or removal (`clear_api_key`) |
 | `DELETE /admin/llm/providers/{id}` | admin | Delete provider (blocked with 409 if active or fallback) |
 | `POST /admin/llm/providers/{id}/test` | admin | Rate-limited connection test (10 req/min) returning sanitized results |
-| `GET /admin/llm/providers/{id}/models` | admin | Fetch supported models dynamically from provider or fallback |
 | `GET /admin/llm/settings` | admin | Read current active and fallback LLM runtime settings |
-| `PUT /admin/llm/settings` | admin | Atomically update runtime settings, bump version, and trigger hot-reload |
+| `PUT /admin/llm/settings` | admin | Atomically update runtime settings (validated against catalog), bump version, and trigger hot-reload |
+| `GET /admin/llm/usage` | admin | Aggregated token usage, latency, errors, and cost estimates (`24h`, `7d`, `30d`) |
 | `GET /health` | public | Postgres, Redis, Qdrant, and runtime LLM provider/model reporting |
 
 Standard error format: `{ "detail": "...", "code": "..." }` with correct HTTP status codes (`401`, `403`, `404`, `409` duplicate, `413` too large, `422`, `429`, `503`).
@@ -519,6 +533,7 @@ Next.js (App Router) with TypeScript and Tailwind.
 | History | `ChatHistorySidebar`: conversations from `GET /chat/sessions`, restore messages and citations, rename, delete, new chat. History persists across logout and login |
 | Admin users | `AdminUsers` tab: users table, role change and activate or deactivate with confirmation |
 | Admin LLM | `AdminLLMManager` tab: warning banner for unconfigured/failing active providers, active model and sampling parameters selector (temperature 0.0-2.0, max tokens 1-8192), provider presets (OpenAI, Gemini, Anthropic, OpenRouter, Ollama, Custom), CRUD provider modal with password-masked key input and hint display, test connection modal with rate limit feedback, key clearing modal with clear_api_key 409 guard, and read-only embedding/reranker architecture display. Visible and accessible to admins only |
+| Admin System | `AdminSystemOverview` tab: 9-section observatory covering service dependencies with live round-trip latencies (PostgreSQL, Redis, Qdrant), dynamic route registry with OpenAPI introspection and Swagger links, Qdrant collection stats and vector sync, live architecture specifications (read-only), Celery worker metrics and 15-minute document reconciler status, chat quality indicators (fallbacks, avg score, ungrounded counts, zero message exposure), runtime-adjustable settings with hot-reload and grounding warning alert (< 0.50), factory reset confirmation, recent audit trail, and allowlisted environment inspection. Visible to admins only |
 
 `services/streamChat.ts` implements fetch-based streaming with the bearer token and parses the events in §6.8.
 

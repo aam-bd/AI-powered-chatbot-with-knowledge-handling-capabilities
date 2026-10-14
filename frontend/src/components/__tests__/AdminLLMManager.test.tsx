@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest';
 import AdminLLMManager from '../AdminLLMManager';
 import * as api from '@/services/api';
 import * as authContext from '@/context/AuthContext';
-import { LLMProvider, LLMSettings } from '@/types/chat';
+import { LLMProvider, LLMSettings, ProviderModel, LLMUsageResponse } from '@/types/chat';
 
 // Mock Lucide icons that may have issues in jsdom
 vi.mock('lucide-react', async () => {
@@ -75,6 +75,75 @@ const mockProviders: LLMProvider[] = [
   },
 ];
 
+const mockCatalogModels: ProviderModel[] = [
+  {
+    id: 'pm-1',
+    provider_id: 'prov-openai',
+    model_id: 'gpt-4o',
+    display_name: 'GPT-4o Omnimodel',
+    context_length: 128000,
+    max_output_tokens: 4096,
+    is_enabled: true,
+    is_available: true,
+    price_prompt_per_1m: 2.5,
+    price_completion_per_1m: 10.0,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'pm-2',
+    provider_id: 'prov-openai',
+    model_id: 'gpt-4o-mini',
+    display_name: 'GPT-4o Mini',
+    context_length: 128000,
+    max_output_tokens: 4096,
+    is_enabled: true,
+    is_available: true,
+    price_prompt_per_1m: 0.15,
+    price_completion_per_1m: 0.60,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'pm-3',
+    provider_id: 'prov-openai',
+    model_id: 'chatgpt-custom',
+    display_name: 'Custom Finetune',
+    context_length: 32000,
+    max_output_tokens: 2048,
+    is_enabled: false,
+    is_available: true,
+    price_prompt_per_1m: null,
+    price_completion_per_1m: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+];
+
+const mockUsage: LLMUsageResponse = {
+  window: '24h',
+  total_requests: 42,
+  total_prompt_tokens: 15420,
+  total_completion_tokens: 5210,
+  total_tokens: 20630,
+  total_errors: 1,
+  total_estimated_cost: 0.0825,
+  avg_latency_ms: 654,
+  items: [
+    {
+      provider_id: 'prov-openai',
+      provider_name: 'OpenAI Production',
+      model_id: 'gpt-4o-mini',
+      total_requests: 42,
+      total_prompt_tokens: 15420,
+      total_completion_tokens: 5210,
+      total_errors: 1,
+      estimated_cost: 0.0825,
+      avg_latency_ms: 654,
+    },
+  ],
+};
+
 const mockSettings: LLMSettings = {
   active_provider_id: 'prov-openai',
   active_model: 'gpt-4o-mini',
@@ -106,6 +175,8 @@ describe('AdminLLMManager Component', () => {
     vi.spyOn(api, 'fetchLLMProviders').mockResolvedValue(mockProviders);
     vi.spyOn(api, 'fetchLLMSettings').mockResolvedValue(mockSettings);
     vi.spyOn(api, 'fetchHealth').mockResolvedValue(mockHealth);
+    vi.spyOn(api, 'fetchProviderCatalog').mockResolvedValue(mockCatalogModels);
+    vi.spyOn(api, 'fetchLLMUsage').mockResolvedValue(mockUsage);
   });
 
   it('renders access denied for non-admin users', () => {
@@ -301,6 +372,104 @@ describe('AdminLLMManager Component', () => {
         })
       );
       expect(screen.getByText(/LLM settings successfully updated/i)).toBeInTheDocument();
+    });
+  });
+
+  it('toggles base URL lock/unlock when creating preset provider', async () => {
+    render(<AdminLLMManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Provider')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Provider'));
+
+    // Base URL should initially be read-only for presets
+    const urlInput = screen.getByPlaceholderText('https://api.openai.com/v1') as HTMLInputElement;
+    expect(urlInput.readOnly).toBe(true);
+    expect(screen.getByText('Unlock to edit')).toBeInTheDocument();
+
+    // Click Unlock
+    fireEvent.click(screen.getByText('Unlock to edit'));
+    expect(urlInput.readOnly).toBe(false);
+    expect(screen.getByText('Lock URL')).toBeInTheDocument();
+  });
+
+  it('calls restorePresetProviders and displays success banner', async () => {
+    const restoreSpy = vi.spyOn(api, 'restorePresetProviders').mockResolvedValue(mockProviders);
+
+    render(<AdminLLMManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Restore Presets')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Restore Presets'));
+
+    await waitFor(() => {
+      expect(restoreSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/Preset providers restored successfully/i)).toBeInTheDocument();
+    });
+  });
+
+  it('opens model catalog, filters models, and toggles model enablement', async () => {
+    const updateModelSpy = vi.spyOn(api, 'updateProviderModel').mockResolvedValue({
+      ...mockCatalogModels[2],
+      is_enabled: true,
+    });
+
+    render(<AdminLLMManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenAI GPT-4o')).toBeInTheDocument();
+    });
+
+    // Click catalog button for OpenAI
+    const catalogBtns = screen.getAllByRole('button', { name: /Catalog/i });
+    fireEvent.click(catalogBtns[0]);
+
+    // Model catalog modal should open
+    await waitFor(() => {
+      expect(screen.getByText(/Model Catalog: OpenAI GPT-4o/i)).toBeInTheDocument();
+      expect(screen.getByText('GPT-4o Omnimodel')).toBeInTheDocument();
+      expect(screen.getByText('chatgpt-custom')).toBeInTheDocument();
+    });
+
+    // Test filter search
+    const searchInput = screen.getByPlaceholderText(/Filter models by identifier or name/i);
+    fireEvent.change(searchInput, { target: { value: 'custom' } });
+    expect(screen.queryByText('GPT-4o Omnimodel')).not.toBeInTheDocument();
+    expect(screen.getByText('chatgpt-custom')).toBeInTheDocument();
+
+    // Toggle enablement on chatgpt-custom
+    const checkboxes = screen.getAllByRole('checkbox');
+    // First checkbox in filtered table is for chatgpt-custom
+    fireEvent.click(checkboxes[0]);
+
+    await waitFor(() => {
+      expect(updateModelSpy).toHaveBeenCalledWith('prov-openai', 'chatgpt-custom', { is_enabled: true });
+    });
+  });
+
+  it('renders LLM usage metrics and supports switching time ranges', async () => {
+    const fetchUsageSpy = vi.spyOn(api, 'fetchLLMUsage');
+
+    render(<AdminLLMManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/LLM Generation Usage & Cost Tracking/i)).toBeInTheDocument();
+    });
+
+    // Verify initial 24h metrics rendered
+    expect(screen.getAllByText('42')[0]).toBeInTheDocument(); // total requests
+    expect(screen.getAllByText('15,420')[0]).toBeInTheDocument(); // prompt tokens
+    expect(screen.getAllByText('$0.0825')[0]).toBeInTheDocument(); // total cost
+
+    // Click 7D filter
+    fireEvent.click(screen.getByText('7D'));
+
+    await waitFor(() => {
+      expect(fetchUsageSpy).toHaveBeenCalledWith('7d');
     });
   });
 });

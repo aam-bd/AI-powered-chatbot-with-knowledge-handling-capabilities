@@ -245,13 +245,15 @@ class LLMProviderCreate(BaseModel):
     provider_type: str = Field(..., min_length=1, max_length=50)
     base_url: str = Field(..., min_length=1, max_length=500)
     api_key: Optional[str] = Field(None, description="Plaintext API key; encrypted at rest")
-    models: List[str] = Field(..., min_length=1, description="List of supported model identifiers")
-    default_model: str = Field(..., min_length=1, max_length=100)
+    models: List[str] = Field(default_factory=list, description="List of supported model identifiers")
+    default_model: Optional[str] = Field(None, max_length=100)
     is_enabled: bool = True
+    preset_key: Optional[str] = None
+    discovery_kind: Optional[str] = "openai_models"
 
     @model_validator(mode="after")
     def validate_models(self) -> "LLMProviderCreate":
-        if self.default_model not in self.models:
+        if self.default_model and self.models and self.default_model not in self.models:
             raise ValueError(f"default_model '{self.default_model}' must be in models list: {self.models}")
         return self
 
@@ -262,9 +264,10 @@ class LLMProviderUpdate(BaseModel):
     base_url: Optional[str] = Field(None, min_length=1, max_length=500)
     api_key: Optional[str] = Field(None, description="New API key (replaces existing if sent)")
     clear_api_key: Optional[bool] = Field(False, description="Explicitly remove stored API key")
-    models: Optional[List[str]] = Field(None, min_length=1)
+    models: Optional[List[str]] = None
     default_model: Optional[str] = Field(None, min_length=1, max_length=100)
     is_enabled: Optional[bool] = None
+    discovery_kind: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_models(self) -> "LLMProviderUpdate":
@@ -289,8 +292,96 @@ class LLMProviderResponse(BaseModel):
     updated_at: datetime
     last_test_status: Optional[str] = None
     last_test_at: Optional[datetime] = None
+    is_preset: bool = False
+    preset_key: Optional[str] = None
+    docs_url: Optional[str] = None
+    key_required: bool = True
+    discovery_kind: str = "openai_models"
+    discovered_at: Optional[datetime] = None
+    discovered_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderModelRead(BaseModel):
+    """Model in the provider's discovered/manual catalog."""
+    id: uuid.UUID
+    provider_id: uuid.UUID
+    model_id: str
+    display_name: Optional[str] = None
+    context_length: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    price_prompt_per_1m: Optional[float] = None
+    price_completion_per_1m: Optional[float] = None
+    source: str  # 'discovered' | 'manual'
+    is_available: bool
+    is_enabled: bool
+    discovered_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderModelUpdate(BaseModel):
+    """Admin update to model enablement or manual price override."""
+    is_enabled: Optional[bool] = None
+    price_prompt_per_1m: Optional[float] = Field(None, ge=0.0)
+    price_completion_per_1m: Optional[float] = Field(None, ge=0.0)
+
+
+class ManualModelCreate(BaseModel):
+    """Admin manual model entry when discovery fails."""
+    model_id: str = Field(..., min_length=1, max_length=150)
+    display_name: Optional[str] = Field(None, max_length=255)
+    context_length: Optional[int] = Field(None, gt=0)
+    max_output_tokens: Optional[int] = Field(None, gt=0)
+    price_prompt_per_1m: Optional[float] = Field(None, ge=0.0)
+    price_completion_per_1m: Optional[float] = Field(None, ge=0.0)
+
+
+class DiscoveredModelRead(BaseModel):
+    """Model shape normalized from upstream discovery APIs."""
+    model_id: str
+    display_name: Optional[str] = None
+    context_length: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    price_prompt_per_1m: Optional[float] = None
+    price_completion_per_1m: Optional[float] = None
+
+
+class DiscoverUnsavedRequest(BaseModel):
+    """One-off discovery probe without persisting keys."""
+    provider_type: str = "openai_compatible"
+    base_url: str = Field(..., min_length=1, max_length=500)
+    api_key: Optional[str] = None
+    discovery_kind: str = "openai_models"
+
+
+class LLMUsageSummaryItem(BaseModel):
+    """Aggregated usage metrics per model/provider."""
+    provider_id: Optional[uuid.UUID] = None
+    provider_name: Optional[str] = None
+    model_id: str
+    total_requests: int
+    total_prompt_tokens: Optional[int] = None
+    total_completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    total_errors: int
+    avg_latency_ms: float
+    estimated_cost: Optional[float] = None
+    cost_reason: Optional[str] = None
+
+
+class LLMUsageResponse(BaseModel):
+    """Aggregated usage statistics across a time range."""
+    range: str  # '24h' | '7d' | '30d'
+    total_requests: int
+    total_prompt_tokens: Optional[int] = None
+    total_completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    total_errors: int
+    avg_latency_ms: float
+    total_estimated_cost: Optional[float] = None
+    items: List[LLMUsageSummaryItem]
 
 
 class LLMProviderTestResponse(BaseModel):
@@ -299,6 +390,7 @@ class LLMProviderTestResponse(BaseModel):
     status: str
     message: str
     sanitized_error: Optional[str] = None
+    discovered_count: Optional[int] = None
 
 
 class LLMModelsResponse(BaseModel):
@@ -333,5 +425,172 @@ class LLMSettingsUpdate(BaseModel):
     fallback_model: Optional[str] = None
     temperature: float = Field(0.0, ge=0.0, le=2.0)
     max_tokens: int = Field(1024, gt=0, le=32768)
+
+
+# ==============================================================================
+# Prompt 7e-3: System Overview, Health, Routes, Architecture & Runtime Settings
+# ==============================================================================
+
+class SystemSettingsResponse(BaseModel):
+    """Runtime editable system parameters."""
+    reranker_threshold: float
+    retrieval_top_k: int
+    rerank_top_n: int
+    history_messages: int
+    rate_limit_per_minute: int
+    rate_limit_login_per_minute: int
+    sse_keepalive_interval: int
+    max_upload_size_bytes: int
+    version: int
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SystemSettingsUpdate(BaseModel):
+    """Request to update editable system settings."""
+    reranker_threshold: Optional[float] = Field(None, ge=0.20, le=0.95)
+    retrieval_top_k: Optional[int] = Field(None, ge=5, le=50)
+    rerank_top_n: Optional[int] = Field(None, ge=1, le=10)
+    history_messages: Optional[int] = Field(None, ge=0, le=20)
+    rate_limit_per_minute: Optional[int] = Field(None, ge=10, le=300)
+    rate_limit_login_per_minute: Optional[int] = Field(None, ge=2, le=30)
+    sse_keepalive_interval: Optional[int] = Field(None, ge=5, le=60)
+    max_upload_size_bytes: Optional[int] = Field(None, ge=1048576, le=52428800)
+
+    @model_validator(mode="after")
+    def validate_invariants(self) -> "SystemSettingsUpdate":
+        if self.retrieval_top_k is not None and self.rerank_top_n is not None:
+            if self.rerank_top_n > self.retrieval_top_k:
+                raise ValueError("rerank_top_n cannot exceed retrieval_top_k")
+        return self
+
+
+class DependencyHealthItem(BaseModel):
+    """Health item for a single system dependency."""
+    name: str
+    status: str  # 'healthy' | 'degraded' | 'unhealthy'
+    latency_ms: Optional[float] = None
+    message: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class AdminSystemHealthResponse(BaseModel):
+    """Comprehensive system health with latencies per dependency."""
+    status: str  # 'healthy' | 'degraded' | 'unhealthy'
+    version: str
+    checked_at: datetime
+    dependencies: Dict[str, DependencyHealthItem]
+
+
+class RouteInfoItem(BaseModel):
+    """Registered API route descriptor."""
+    method: str
+    path: str
+    tags: List[str] = []
+    summary: Optional[str] = None
+    auth_level: str  # 'admin' | 'user' | 'public'
+
+
+class SystemRoutesResponse(BaseModel):
+    """API endpoints introspection response."""
+    base_url: str
+    docs_url: str
+    redoc_url: str
+    openapi_url: str
+    health_url: str
+    routes: List[RouteInfoItem]
+
+
+class VectorStoreStatsResponse(BaseModel):
+    """Vector database and collection statistics."""
+    collection_name: str
+    status: str
+    points_count: int
+    vectors_count: int
+    segments_count: int
+    disk_data_size_bytes: Optional[int] = None
+    dense_dim: int
+    has_sparse: bool
+    indexed_documents_count: int
+    active_versions_count: int
+    superseded_versions_count: int
+
+
+class ArchitectureOverviewResponse(BaseModel):
+    """Live retrieval and ranking architecture details."""
+    dense_model: str
+    dense_dim: int
+    sparse_model: str
+    fusion_method: str
+    rrf_k: int
+    retrieval_top_k: int
+    reranker_model: str
+    reranker_threshold: float
+    rerank_top_n: int
+    chunk_size: int
+    chunk_overlap: int
+    history_window: int
+    guardrail_layers: List[str]
+    fallback_message: str
+
+
+class WorkerStatsResponse(BaseModel):
+    """Celery worker and task queue telemetry."""
+    online_workers_count: int
+    worker_names: List[str]
+    active_tasks_count: int
+    queue_length: int
+    last_beat_run: Optional[datetime] = None
+    last_reconciler_run: Optional[datetime] = None
+    reconciler_fixed_count: int = 0
+    reconciler_last_status: Optional[str] = None
+    failed_ingestions_count: int = 0
+
+
+class ChatQualityIndicatorsResponse(BaseModel):
+    """Chat quality and grounding metrics."""
+    window: str  # '24h' | '7d'
+    total_queries: int
+    fallback_count: int
+    fallback_rate: float
+    layer1_fallback_count: int
+    layer2_fallback_count: int
+    layer3_fallback_count: int
+    avg_retrieval_score: Optional[float] = None
+    queries_with_no_sources: int
+
+
+class AuditLogEntryResponse(BaseModel):
+    """Admin audit log entry."""
+    id: uuid.UUID
+    created_at: datetime
+    user_id: Optional[uuid.UUID] = None
+    user_email: Optional[str] = None
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RecentActivityResponse(BaseModel):
+    """Recent admin audit trails and system errors."""
+    audit_logs: List[AuditLogEntryResponse]
+    recent_errors: List[Dict[str, Any]]
+
+
+class EnvironmentSettingItem(BaseModel):
+    """Allowlisted non-secret configuration item."""
+    key: str
+    value: str
+    description: Optional[str] = None
+
+
+class SystemEnvironmentResponse(BaseModel):
+    """Allowlisted system environment variables."""
+    settings: List[EnvironmentSettingItem]
+
 
 

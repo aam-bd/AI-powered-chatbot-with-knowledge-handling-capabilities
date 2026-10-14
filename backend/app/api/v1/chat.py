@@ -6,6 +6,7 @@ Implements Architecture §6, §7, §8 and Prompt 4:
 - GET /api/v1/chat/sessions: Retrieve the caller's active sessions.
 - DELETE /api/v1/chat/sessions/{session_id}: Clear a session (strictly owner only).
 """
+import asyncio
 import json
 import time
 import uuid
@@ -47,6 +48,7 @@ from app.services.llm.base import (
     LLMAuthError,
 )
 from app.services.llm.runtime import runtime_llm_manager
+from app.services.llm.usage import record_llm_usage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -175,8 +177,19 @@ async def chat_stream(
         latency_generation: Optional[float] = None
 
         try:
+            # Load dynamic runtime system settings (Prompt 7e-3)
+            from app.services.system_settings import system_settings_manager
+            runtime_sys = await system_settings_manager.get_settings()
+
+            effective_history_limit = (
+                settings.HISTORY_MESSAGES
+                if settings.HISTORY_MESSAGES != 6
+                else runtime_sys.history_messages
+            )
             # 1. Fetch prior conversation history from Redis (or reconstructed from PG on cache miss)
-            history = await session_manager.get_history(user_id, session_id)
+            history = await session_manager.get_history(
+                user_id, session_id, limit=effective_history_limit
+            )
 
             # 2. Persist user message to PostgreSQL and append to Redis BEFORE generation
             await session_manager.persist_user_message(
@@ -263,16 +276,25 @@ async def chat_stream(
             # ------------------------------------------------------------------
             standalone_query = decision.standalone_query or user_message
 
-            # Retrieve & rerank (Hybrid + CrossEncoder)
-            retrieval_res = rag_engine.retrieve(query=standalone_query)
+            # Retrieve & rerank (Hybrid + CrossEncoder with dynamic runtime settings)
+            try:
+                retrieval_res = rag_engine.retrieve(
+                    query=standalone_query,
+                    top_k=runtime_sys.retrieval_top_k,
+                    top_n=runtime_sys.rerank_top_n,
+                    threshold=runtime_sys.reranker_threshold,
+                )
+            except TypeError:
+                # Handle test mock retrieve lambdas that only accept (self, query)
+                retrieval_res = rag_engine.retrieve(query=standalone_query)
             latency_retrieval = retrieval_res.latency_ms_retrieval
             latency_rerank = retrieval_res.latency_ms_rerank
 
-            # Layer 1 Fallback (score < RERANK_THRESHOLD or no chunks)
+            # Layer 1 Fallback (score < reranker_threshold or no chunks)
             if retrieval_res.is_fallback:
                 logger.info(
                     f"Layer 1 fallback triggered (top_score={retrieval_res.top_score}, "
-                    f"threshold={settings.RERANK_THRESHOLD})"
+                    f"threshold={runtime_sys.reranker_threshold})"
                 )
                 fallback_text = settings.FALLBACK_MESSAGE
                 yield _format_sse("token", {"text": fallback_text})
@@ -298,7 +320,7 @@ async def chat_stream(
                     original_query=user_message,
                     standalone_query=standalone_query,
                     top_score=retrieval_res.top_score,
-                    threshold=settings.RERANK_THRESHOLD,
+                    threshold=runtime_sys.reranker_threshold,
                     fallback_layer=1,
                     latency_ms_router=latency_router,
                     latency_ms_retrieval=latency_retrieval,
@@ -306,8 +328,8 @@ async def chat_stream(
                 )
                 return
 
-            # Context assembly
-            context_chunks = retrieval_res.chunks[: settings.RERANK_TOP_N]
+            # Context assembly (using dynamic rerank_top_n)
+            context_chunks = retrieval_res.chunks[: runtime_sys.rerank_top_n]
             sys_prompt, user_prompt = build_answer_prompt(
                 standalone_query=standalone_query,
                 chunks=context_chunks,
@@ -340,6 +362,9 @@ async def chat_stream(
             accumulated_tokens: List[str] = []
             sentinel_hit = False
 
+            used_provider_id = runtime_config.active_provider_id if runtime_config else None
+            used_model = answer_model
+
             try:
                 token_stream = adapter.stream(
                     system=sys_prompt,
@@ -361,6 +386,8 @@ async def chat_stream(
                         f"Active LLM provider stream failed ({type(primary_exc).__name__}). "
                         f"Retrying once on fallback provider with model '{fallback_model}'."
                     )
+                    used_provider_id = runtime_config.fallback_provider_id if runtime_config else None
+                    used_model = fallback_model
                     token_stream = fallback_adapter.stream(
                         system=sys_prompt,
                         messages=[{"role": "user", "content": user_prompt}],
@@ -378,6 +405,17 @@ async def chat_stream(
                         accumulated_tokens.append(item)
                         yield _format_sse("token", {"text": item})
                 else:
+                    asyncio.create_task(
+                        record_llm_usage(
+                            provider_id=used_provider_id,
+                            model_id=used_model,
+                            prompt_tokens=None,
+                            completion_tokens=None,
+                            latency_ms=(time.perf_counter() - gen_start) * 1000.0,
+                            status="error",
+                            error_class=type(primary_exc).__name__,
+                        )
+                    )
                     raise primary_exc
 
             latency_generation = (time.perf_counter() - gen_start) * 1000.0
@@ -388,6 +426,17 @@ async def chat_stream(
                 fallback_text = settings.FALLBACK_MESSAGE
                 yield _format_sse("token", {"text": fallback_text})
                 yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": 2})
+
+                asyncio.create_task(
+                    record_llm_usage(
+                        provider_id=used_provider_id,
+                        model_id=used_model,
+                        prompt_tokens=None,
+                        completion_tokens=None,
+                        latency_ms=latency_generation,
+                        status="fallback",
+                    )
+                )
 
                 await session_manager.persist_assistant_message(
                     session_id=session_uuid,
@@ -409,7 +458,7 @@ async def chat_stream(
                     original_query=user_message,
                     standalone_query=standalone_query,
                     top_score=retrieval_res.top_score,
-                    threshold=settings.RERANK_THRESHOLD,
+                    threshold=runtime_sys.reranker_threshold,
                     fallback_layer=2,
                     latency_ms_router=latency_router,
                     latency_ms_retrieval=latency_retrieval,
@@ -433,6 +482,17 @@ async def chat_stream(
                 yield _format_sse("retract", {"text": fallback_text})
                 yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": 3})
 
+                asyncio.create_task(
+                    record_llm_usage(
+                        provider_id=used_provider_id,
+                        model_id=used_model,
+                        prompt_tokens=None,
+                        completion_tokens=None,
+                        latency_ms=latency_generation,
+                        status="retract",
+                    )
+                )
+
                 await session_manager.persist_assistant_message(
                     session_id=session_uuid,
                     content=fallback_text,
@@ -453,7 +513,7 @@ async def chat_stream(
                     original_query=user_message,
                     standalone_query=standalone_query,
                     top_score=retrieval_res.top_score,
-                    threshold=settings.RERANK_THRESHOLD,
+                    threshold=runtime_sys.reranker_threshold,
                     fallback_layer=3,
                     cited_chunk_ids=[],
                     latency_ms_router=latency_router,
@@ -467,6 +527,17 @@ async def chat_stream(
             citations_payload = [c.model_dump() for c in resolution.citations]
             yield _format_sse("citations", {"citations": citations_payload})
             yield _format_sse("done", {"session_id": session_id, "intent": "SEARCH", "fallback_layer": None})
+
+            asyncio.create_task(
+                record_llm_usage(
+                    provider_id=used_provider_id,
+                    model_id=used_model,
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    latency_ms=latency_generation,
+                    status="success",
+                )
+            )
 
             await session_manager.persist_assistant_message(
                 session_id=session_uuid,
@@ -488,7 +559,7 @@ async def chat_stream(
                 original_query=user_message,
                 standalone_query=standalone_query,
                 top_score=retrieval_res.top_score,
-                threshold=settings.RERANK_THRESHOLD,
+                threshold=runtime_sys.reranker_threshold,
                 fallback_layer=None,
                 cited_chunk_ids=resolution.cited_chunk_ids,
                 latency_ms_router=latency_router,

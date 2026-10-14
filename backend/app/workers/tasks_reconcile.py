@@ -73,6 +73,16 @@ async def _async_reconcile_stale_documents():
 
         await session.commit()
 
+        # Record reconciler telemetry to Redis for admin system overview
+        try:
+            from app.db.redis import get_redis_client
+            redis_client = get_redis_client()
+            await redis_client.set("system:reconciler:last_run", datetime.now(timezone.utc).isoformat())
+            await redis_client.set("system:reconciler:fixed_count", str(len(stuck_candidates)))
+            await redis_client.set("system:reconciler:status", "success")
+        except Exception as r_err:
+            logger.warning(f"Failed to record reconciler telemetry in Redis: {r_err}")
+
 
 @celery_app.task(name="app.workers.tasks_reconcile.reconcile_stale_documents_task")
 def reconcile_stale_documents_task():

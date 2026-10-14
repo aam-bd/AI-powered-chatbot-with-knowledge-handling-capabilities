@@ -388,6 +388,179 @@ class LLMProvider(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    is_preset: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    preset_key: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+    docs_url: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    key_required: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    discovery_kind: Mapped[str] = mapped_column(
+        String(50),
+        default="openai_models",
+        nullable=False,
+    )
+    discovered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    discovered_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # Relationships
+    models_rel: Mapped[List["ProviderModel"]] = relationship(
+        "ProviderModel",
+        back_populates="provider",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProviderModel(Base):
+    """Discovered or manually entered models for an LLM provider (Prompt 7e-2)."""
+    __tablename__ = "provider_models"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("llm_providers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    model_id: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+    )
+    display_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    context_length: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    max_output_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    price_prompt_per_1m: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    price_completion_per_1m: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    source: Mapped[str] = mapped_column(
+        String(20),
+        default="discovered",
+        nullable=False,
+    )  # 'discovered' | 'manual'
+    is_available: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+    discovered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+
+    provider: Mapped["LLMProvider"] = relationship(
+        "LLMProvider",
+        back_populates="models_rel",
+    )
+
+
+class LLMUsage(Base):
+    """Usage and token tracking per generation request (Prompt 7e-2)."""
+    __tablename__ = "llm_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        index=True,
+        nullable=False,
+    )
+    provider_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("llm_providers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    model_id: Mapped[str] = mapped_column(
+        String(150),
+        index=True,
+        nullable=False,
+    )
+    prompt_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    completion_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    total_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    latency_ms: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )  # 'success' | 'error' | 'retract' | 'fallback'
+    error_class: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    estimated_cost: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
 
 
 class LLMSettings(Base):
@@ -446,5 +619,117 @@ class LLMSettings(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_llm_settings_single_row"),
     )
+
+
+class SystemSettings(Base):
+    """Runtime system settings singleton row (Prompt 7e-3). Single row constrained to id=1."""
+    __tablename__ = "system_settings"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        default=1,
+    )
+    reranker_threshold: Mapped[float] = mapped_column(
+        Float,
+        default=0.5,
+        nullable=False,
+    )
+    retrieval_top_k: Mapped[int] = mapped_column(
+        Integer,
+        default=15,
+        nullable=False,
+    )
+    rerank_top_n: Mapped[int] = mapped_column(
+        Integer,
+        default=4,
+        nullable=False,
+    )
+    history_messages: Mapped[int] = mapped_column(
+        Integer,
+        default=6,
+        nullable=False,
+    )
+    rate_limit_per_minute: Mapped[int] = mapped_column(
+        Integer,
+        default=60,
+        nullable=False,
+    )
+    rate_limit_login_per_minute: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+        nullable=False,
+    )
+    sse_keepalive_interval: Mapped[int] = mapped_column(
+        Integer,
+        default=15,
+        nullable=False,
+    )
+    max_upload_size_bytes: Mapped[int] = mapped_column(
+        Integer,
+        default=20971520,
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(
+        BigInteger,
+        default=1,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_system_settings_single_row"),
+    )
+
+
+class AuditLog(Base):
+    """Structured administration audit trail entries (Prompt 7e-3)."""
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        index=True,
+        nullable=False,
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_email: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    action: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )
+    target_type: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+    target_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    details: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    user: Mapped[Optional["User"]] = relationship("User")
 
 

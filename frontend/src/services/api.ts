@@ -12,6 +12,21 @@ import {
   LLMTestResult,
   LLMModelsResult,
   HealthInfo,
+  ProviderModel,
+  DiscoveredModel,
+  ManualModelInput,
+  DiscoverUnsavedInput,
+  LLMUsageResponse,
+  AdminSystemHealthResponse,
+  SystemRoutesResponse,
+  VectorStoreStatsResponse,
+  ArchitectureOverviewResponse,
+  WorkerStatsResponse,
+  ChatQualityIndicatorsResponse,
+  RecentActivityResponse,
+  SystemSettingsResponse,
+  SystemSettingsUpdate,
+  SystemEnvironmentResponse,
 } from '@/types/chat';
 
 export const API_BASE_URL =
@@ -513,6 +528,215 @@ export async function fetchHealth(): Promise<HealthInfo> {
   }
   return res.json();
 }
+
+/**
+ * Restores preset LLM providers that may have been missing or deleted.
+ */
+export async function restorePresetProviders(): Promise<LLMProvider[]> {
+  const res = await fetchWithAuth('/admin/llm/providers/restore-presets', {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to restore preset providers');
+  }
+  return data;
+}
+
+/**
+ * Triggers upstream model discovery for an existing provider and saves to catalog.
+ */
+export async function discoverProviderModels(providerId: string): Promise<ProviderModel[]> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}/discover`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Model discovery failed');
+  }
+  return data;
+}
+
+/**
+ * Probes discovery on unsaved credentials without persisting them.
+ */
+export async function discoverUnsavedModels(payload: DiscoverUnsavedInput): Promise<DiscoveredModel[]> {
+  const res = await fetchWithAuth('/admin/llm/discover-unsaved', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Unsaved discovery probe failed');
+  }
+  return data;
+}
+
+/**
+ * Retrieves the full model catalog for a provider.
+ */
+export async function fetchProviderCatalog(providerId: string): Promise<ProviderModel[]> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}/models`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch provider model catalog');
+  }
+  return res.json();
+}
+
+/**
+ * Updates model enablement or overrides price per 1M tokens.
+ */
+export async function updateProviderModel(
+  providerId: string,
+  modelId: string,
+  payload: { is_enabled?: boolean; price_prompt_per_1m?: number | null; price_completion_per_1m?: number | null }
+): Promise<ProviderModel> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}/models/${encodeURIComponent(modelId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to update model settings');
+  }
+  return data;
+}
+
+/**
+ * Manually registers a model when auto-discovery fails.
+ */
+export async function addManualModel(providerId: string, payload: ManualModelInput): Promise<ProviderModel> {
+  const res = await fetchWithAuth(`/admin/llm/providers/${providerId}/models/manual`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to add manual model');
+  }
+  return data;
+}
+
+/**
+ * Fetches aggregated LLM usage and estimated cost metrics.
+ */
+export async function fetchLLMUsage(range: '24h' | '7d' | '30d' = '24h'): Promise<LLMUsageResponse> {
+  const res = await fetchWithAuth(`/admin/llm/usage?range=${range}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch LLM usage metrics');
+  }
+  return res.json();
+}
+
+/**
+ * Prompt 7e-3: Admin System Overview & Settings APIs
+ */
+export async function fetchSystemHealth(): Promise<AdminSystemHealthResponse> {
+  const res = await fetchWithAuth('/admin/system/health');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch system health');
+  }
+  return res.json();
+}
+
+export async function fetchSystemRoutes(): Promise<SystemRoutesResponse> {
+  const res = await fetchWithAuth('/admin/system/routes');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to introspect API routes');
+  }
+  return res.json();
+}
+
+export async function fetchVectorStoreStats(): Promise<VectorStoreStatsResponse> {
+  const res = await fetchWithAuth('/admin/system/vector-store');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch vector store stats');
+  }
+  return res.json();
+}
+
+export async function fetchArchitectureOverview(): Promise<ArchitectureOverviewResponse> {
+  const res = await fetchWithAuth('/admin/system/architecture');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch architecture overview');
+  }
+  return res.json();
+}
+
+export async function fetchWorkerStats(): Promise<WorkerStatsResponse> {
+  const res = await fetchWithAuth('/admin/system/workers');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch worker statistics');
+  }
+  return res.json();
+}
+
+export async function fetchChatQualityIndicators(window: '24h' | '7d' = '24h'): Promise<ChatQualityIndicatorsResponse> {
+  const res = await fetchWithAuth(`/admin/system/quality?window=${window}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch quality indicators');
+  }
+  return res.json();
+}
+
+export async function fetchRecentActivity(): Promise<RecentActivityResponse> {
+  const res = await fetchWithAuth('/admin/system/activity');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch recent audit activity');
+  }
+  return res.json();
+}
+
+export async function fetchSystemSettings(): Promise<SystemSettingsResponse> {
+  const res = await fetchWithAuth('/admin/system/settings');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch system settings');
+  }
+  return res.json();
+}
+
+export async function updateSystemSettings(payload: SystemSettingsUpdate): Promise<SystemSettingsResponse> {
+  const res = await fetchWithAuth('/admin/system/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to update system settings');
+  }
+  return data;
+}
+
+export async function resetSystemSettings(): Promise<SystemSettingsResponse> {
+  const res = await fetchWithAuth('/admin/system/settings/reset', {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to reset system settings');
+  }
+  return data;
+}
+
+export async function fetchSystemEnvironment(): Promise<SystemEnvironmentResponse> {
+  const res = await fetchWithAuth('/admin/system/environment');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to fetch environment configuration');
+  }
+  return res.json();
+}
+
 
 
 

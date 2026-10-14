@@ -25,7 +25,7 @@ from app.core.security import require_admin
 from app.core.crypto import encrypt_api_key, decrypt_api_key, get_key_hint
 from app.db.session import get_db
 from app.db.redis import get_redis_client
-from app.models.sql_models import User, LLMProvider, LLMSettings
+from app.models.sql_models import User, LLMProvider, LLMSettings, ProviderModel, LLMUsage
 from app.models.schemas import (
     LLMProviderCreate,
     LLMProviderUpdate,
@@ -34,11 +34,19 @@ from app.models.schemas import (
     LLMModelsResponse,
     LLMSettingsResponse,
     LLMSettingsUpdate,
+    DiscoveredModelRead,
+    ProviderModelRead,
+    ProviderModelUpdate,
+    ManualModelCreate,
+    DiscoverUnsavedRequest,
+    LLMUsageResponse,
 )
 from app.services.llm.base import validate_base_url, LLMError
 from app.services.llm.openai_compat import OpenAICompatAdapter
 from app.services.llm.anthropic import AnthropicAdapter
-from app.services.llm.runtime import REDIS_VERSION_KEY, runtime_llm_manager
+from app.services.llm.discovery import discover_models
+from app.services.llm.usage import get_usage_summary
+from app.services.llm.runtime import REDIS_VERSION_KEY, runtime_llm_manager, seed_presets, PRESET_DEFINITIONS
 
 router = APIRouter(prefix="/admin/llm", tags=["admin-llm"])
 
@@ -55,12 +63,19 @@ def _mask_provider_response(p: LLMProvider) -> LLMProviderResponse:
         has_key=has_key,
         key_hint=hint,
         models=p.models or [],
-        default_model=p.default_model,
+        default_model=p.default_model or "",
         is_enabled=p.is_enabled,
         created_at=p.created_at,
         updated_at=p.updated_at,
         last_test_status=p.last_test_status,
         last_test_at=p.last_test_at,
+        is_preset=bool(p.is_preset),
+        preset_key=p.preset_key,
+        docs_url=p.docs_url,
+        key_required=bool(p.key_required),
+        discovery_kind=p.discovery_kind or "openai_models",
+        discovered_at=p.discovered_at,
+        discovered_count=p.discovered_count or 0,
     )
 
 
@@ -109,17 +124,39 @@ async def create_provider(
     # Encrypt API Key
     encrypted_key = encrypt_api_key(payload.api_key) if payload.api_key else None
 
+    preset_def = next((p for p in PRESET_DEFINITIONS if p["preset_key"] == payload.preset_key), None) if payload.preset_key else None
+
     provider = LLMProvider(
         id=uuid.uuid4(),
         name=payload.name.strip(),
         provider_type=payload.provider_type.strip(),
         base_url=validated_url,
         api_key_encrypted=encrypted_key,
-        models=payload.models,
-        default_model=payload.default_model.strip(),
+        models=payload.models or [],
+        default_model=payload.default_model.strip() if payload.default_model else "",
         is_enabled=payload.is_enabled,
+        is_preset=bool(preset_def),
+        preset_key=payload.preset_key if preset_def else None,
+        docs_url=preset_def["docs_url"] if preset_def else None,
+        key_required=preset_def["key_required"] if preset_def else True,
+        discovery_kind=payload.discovery_kind or (preset_def["discovery_kind"] if preset_def else "openai_models"),
     )
     db.add(provider)
+    await db.flush()
+
+    for m_id in (payload.models or []):
+        db.add(
+            ProviderModel(
+                id=uuid.uuid4(),
+                provider_id=provider.id,
+                model_id=m_id,
+                display_name=m_id,
+                source="manual",
+                is_available=True,
+                is_enabled=True,
+            )
+        )
+
     await db.commit()
     await db.refresh(provider)
 
@@ -129,6 +166,21 @@ async def create_provider(
     )
 
     return _mask_provider_response(provider)
+
+
+@router.post("/providers/restore-presets", response_model=List[LLMProviderResponse])
+async def restore_preset_providers(
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> List[LLMProviderResponse]:
+    """Restore any missing preset providers (seeded disabled without API keys)."""
+    await seed_presets(db)
+    logger.info(
+        f"ADMIN_AUDIT: user_id={current_admin.id} action=RESTORE_PRESET_PROVIDERS"
+    )
+    result = await db.execute(select(LLMProvider).order_by(LLMProvider.created_at.asc()))
+    providers = result.scalars().all()
+    return [_mask_provider_response(p) for p in providers]
 
 
 @router.patch("/providers/{provider_id}", response_model=LLMProviderResponse)
@@ -149,6 +201,11 @@ async def update_provider(
 
     # Check name uniqueness if changed
     if payload.name and payload.name.strip() != provider.name:
+        if provider.is_preset:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Preset providers cannot be renamed away from their preset identity.",
+            )
         dup_res = await db.execute(
             select(LLMProvider).where(LLMProvider.name == payload.name.strip(), LLMProvider.id != provider_id)
         )
@@ -172,11 +229,36 @@ async def update_provider(
                 detail=str(exc),
             )
 
+    # Discovery kind
+    if payload.discovery_kind is not None:
+        provider.discovery_kind = payload.discovery_kind
+
     # Models & default model
     if payload.models is not None:
         provider.models = payload.models
+        # Ensure ProviderModel exists for each model
+        for m_id in payload.models:
+            pm_res = await db.execute(
+                select(ProviderModel).where(
+                    ProviderModel.provider_id == provider.id,
+                    ProviderModel.model_id == m_id,
+                )
+            )
+            if pm_res.scalar_one_or_none() is None:
+                db.add(
+                    ProviderModel(
+                        id=uuid.uuid4(),
+                        provider_id=provider.id,
+                        model_id=m_id,
+                        display_name=m_id,
+                        source="manual",
+                        is_available=True,
+                        is_enabled=True,
+                    )
+                )
+
     if payload.default_model is not None:
-        if payload.default_model not in provider.models:
+        if payload.default_model and payload.default_model not in provider.models:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"default_model '{payload.default_model}' must be in provider models.",
@@ -367,16 +449,20 @@ async def test_provider_connection(
 
 
 # ------------------------------------------------------------------------------
-# 3. Dynamic Models Listing
+# 3. Model Discovery & Catalog Endpoints
 # ------------------------------------------------------------------------------
 
-@router.get("/models", response_model=LLMModelsResponse)
-async def get_provider_models(
-    provider_id: uuid.UUID = Query(..., description="ID of the provider"),
+@router.post(
+    "/providers/{provider_id}/discover",
+    response_model=List[ProviderModelRead],
+    dependencies=[Depends(RateLimiter(times=10, seconds=60, route_name="/admin/llm/discover"))],
+)
+async def discover_provider_models(
+    provider_id: uuid.UUID,
     current_admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
-) -> LLMModelsResponse:
-    """List available models for provider (dynamic fetch where supported, otherwise stored list)."""
+) -> List[ProviderModelRead]:
+    """Auto-discover models from upstream provider endpoint with SSRF guards and sanitized errors."""
     res = await db.execute(select(LLMProvider).where(LLMProvider.id == provider_id))
     provider = res.scalar_one_or_none()
     if not provider:
@@ -385,41 +471,334 @@ async def get_provider_models(
             detail=f"LLM provider '{provider_id}' not found.",
         )
 
-    # Stored fallback models
-    stored_models = list(provider.models or [])
+    # API Key check if required
+    decrypted_key = decrypt_api_key(provider.api_key_encrypted) if provider.api_key_encrypted else ""
+    if provider.key_required and not decrypted_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provider '{provider.name}' requires an API key before model discovery.",
+        )
 
-    # Dynamic model fetch attempt for OpenAI-compatible providers
-    if provider.provider_type in ("openai_compatible", "openai", "openrouter", "ollama"):
-        try:
-            import httpx
-            decrypted_key = decrypt_api_key(provider.api_key_encrypted) if provider.api_key_encrypted else ""
-            headers = {"Authorization": f"Bearer {decrypted_key}"} if decrypted_key else {}
-            models_url = f"{provider.base_url.rstrip('/')}/models"
-            
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                resp = await client.get(models_url, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    model_items = data.get("data", [])
-                    extracted_models = [m["id"] for m in model_items if "id" in m]
-                    if extracted_models:
-                        return LLMModelsResponse(
-                            provider_id=provider.id,
-                            models=extracted_models[:50],
-                            source="provider",
-                        )
-        except Exception:
-            pass
+    try:
+        discovered_models = await discover_models(
+            base_url=provider.base_url,
+            api_key=decrypted_key,
+            discovery_kind=provider.discovery_kind or "openai_models",
+            timeout=10.0,
+        )
+    except Exception as exc:
+        err_msg = str(exc)
+        if decrypted_key and len(decrypted_key) > 4:
+            err_msg = err_msg.replace(decrypted_key, "[REDACTED]")
+        logger.warning(f"Model discovery failed for provider {provider.name}: {err_msg}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Model discovery failed: {err_msg[:200]}",
+        )
+
+    # Fetch existing models in provider_models
+    existing_res = await db.execute(
+        select(ProviderModel).where(ProviderModel.provider_id == provider.id)
+    )
+    existing_rows = existing_res.scalars().all()
+    existing_map = {m.model_id: m for m in existing_rows}
+    discovered_ids = {m.model_id for m in discovered_models}
+
+    now_utc = datetime.now(timezone.utc)
+
+    # Upsert discovered models
+    for dm in discovered_models:
+        if dm.model_id in existing_map:
+            m = existing_map[dm.model_id]
+            if dm.display_name:
+                m.display_name = dm.display_name
+            if dm.context_length:
+                m.context_length = dm.context_length
+            if dm.max_output_tokens:
+                m.max_output_tokens = dm.max_output_tokens
+            # Update pricing only if upstream provides it (never overwrite with None)
+            if dm.price_prompt_per_1m is not None:
+                m.price_prompt_per_1m = dm.price_prompt_per_1m
+            if dm.price_completion_per_1m is not None:
+                m.price_completion_per_1m = dm.price_completion_per_1m
+            m.is_available = True
+            m.discovered_at = now_utc
+        else:
+            new_m = ProviderModel(
+                id=uuid.uuid4(),
+                provider_id=provider.id,
+                model_id=dm.model_id,
+                display_name=dm.display_name,
+                context_length=dm.context_length,
+                max_output_tokens=dm.max_output_tokens,
+                price_prompt_per_1m=dm.price_prompt_per_1m,
+                price_completion_per_1m=dm.price_completion_per_1m,
+                source="discovered",
+                is_available=True,
+                is_enabled=True,
+                discovered_at=now_utc,
+            )
+            db.add(new_m)
+            existing_map[dm.model_id] = new_m
+
+    # Models previously marked as discovered that disappeared from upstream:
+    # flag as unavailable (NEVER delete)
+    for m in existing_rows:
+        if m.source == "discovered" and m.model_id not in discovered_ids:
+            m.is_available = False
+
+    # Update provider discovery stats and models list
+    all_models_list = list(
+        {m.model_id for m in existing_map.values() if m.is_enabled or m.is_available}
+    )
+    provider.models = all_models_list
+    provider.discovered_at = now_utc
+    provider.discovered_count = len(discovered_ids)
+    if not provider.default_model and discovered_ids:
+        provider.default_model = sorted(list(discovered_ids))[0]
+
+    await db.commit()
+
+    logger.info(
+        f"ADMIN_AUDIT: user_id={current_admin.id} action=DISCOVER_LLM_MODELS "
+        f"provider_id={provider.id} count={len(discovered_ids)}"
+    )
+
+    catalog_res = await db.execute(
+        select(ProviderModel).where(ProviderModel.provider_id == provider.id).order_by(ProviderModel.model_id.asc())
+    )
+    return [ProviderModelRead.model_validate(m) for m in catalog_res.scalars().all()]
+
+
+@router.post(
+    "/discover-unsaved",
+    response_model=List[DiscoveredModelRead],
+    dependencies=[Depends(RateLimiter(times=10, seconds=60, route_name="/admin/llm/discover-unsaved"))],
+)
+async def discover_unsaved_models(
+    payload: DiscoverUnsavedRequest,
+    current_admin: User = Depends(require_admin),
+) -> List[DiscoveredModelRead]:
+    """One-off discovery probe without persisting keys or saving provider."""
+    try:
+        validated_url = validate_base_url(
+            payload.base_url,
+            allow_private=settings.ALLOW_PRIVATE_LLM_URLS,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    try:
+        models = await discover_models(
+            base_url=validated_url,
+            api_key=payload.api_key or "",
+            discovery_kind=payload.discovery_kind or "openai_models",
+            timeout=10.0,
+        )
+        return models
+    except Exception as exc:
+        err_msg = str(exc)
+        if payload.api_key and len(payload.api_key) > 4:
+            err_msg = err_msg.replace(payload.api_key, "[REDACTED]")
+        logger.warning(f"Unsaved discovery failed: {err_msg}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Discovery probe failed: {err_msg[:200]}",
+        )
+
+
+@router.get("/providers/{provider_id}/models", response_model=List[ProviderModelRead])
+async def list_provider_catalog_models(
+    provider_id: uuid.UUID,
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> List[ProviderModelRead]:
+    """Get the full catalog of discovered and manual models for a provider."""
+    res = await db.execute(
+        select(ProviderModel)
+        .where(ProviderModel.provider_id == provider_id)
+        .order_by(ProviderModel.model_id.asc())
+    )
+    return [ProviderModelRead.model_validate(m) for m in res.scalars().all()]
+
+
+@router.patch("/providers/{provider_id}/models/{model_id:path}", response_model=ProviderModelRead)
+async def update_provider_model(
+    provider_id: uuid.UUID,
+    model_id: str,
+    payload: ProviderModelUpdate,
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ProviderModelRead:
+    """Update model enablement or set manual price overrides."""
+    res = await db.execute(
+        select(ProviderModel).where(
+            ProviderModel.provider_id == provider_id,
+            ProviderModel.model_id == model_id,
+        )
+    )
+    model = res.scalar_one_or_none()
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model '{model_id}' not found for provider '{provider_id}'.",
+        )
+
+    # If disabling model, ensure it's not active or fallback
+    if payload.is_enabled is False:
+        settings_res = await db.execute(select(LLMSettings).where(LLMSettings.id == 1))
+        cur_settings = settings_res.scalar_one_or_none()
+        if cur_settings:
+            if cur_settings.active_provider_id == provider_id and cur_settings.active_model == model_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot disable model '{model_id}' because it is currently set as the active model.",
+                )
+            if cur_settings.fallback_provider_id == provider_id and cur_settings.fallback_model == model_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot disable model '{model_id}' because it is currently set as the fallback model.",
+                )
+
+    if payload.is_enabled is not None:
+        model.is_enabled = payload.is_enabled
+
+    if payload.price_prompt_per_1m is not None:
+        model.price_prompt_per_1m = payload.price_prompt_per_1m
+    if payload.price_completion_per_1m is not None:
+        model.price_completion_per_1m = payload.price_completion_per_1m
+
+    await db.commit()
+    await db.refresh(model)
+
+    logger.info(
+        f"ADMIN_AUDIT: user_id={current_admin.id} action=UPDATE_PROVIDER_MODEL "
+        f"provider_id={provider_id} model_id={model_id} is_enabled={model.is_enabled}"
+    )
+
+    return ProviderModelRead.model_validate(model)
+
+
+@router.post("/providers/{provider_id}/models/manual", response_model=ProviderModelRead)
+async def add_manual_model(
+    provider_id: uuid.UUID,
+    payload: ManualModelCreate,
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> ProviderModelRead:
+    """Manually register a model when discovery fails or for custom models."""
+    prov_res = await db.execute(select(LLMProvider).where(LLMProvider.id == provider_id))
+    provider = prov_res.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM provider '{provider_id}' not found.",
+        )
+
+    res = await db.execute(
+        select(ProviderModel).where(
+            ProviderModel.provider_id == provider_id,
+            ProviderModel.model_id == payload.model_id.strip(),
+        )
+    )
+    existing = res.scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Model '{payload.model_id}' already exists for this provider.",
+        )
+
+    new_model = ProviderModel(
+        id=uuid.uuid4(),
+        provider_id=provider_id,
+        model_id=payload.model_id.strip(),
+        display_name=payload.display_name.strip() if payload.display_name else payload.model_id.strip(),
+        context_length=payload.context_length,
+        max_output_tokens=payload.max_output_tokens,
+        price_prompt_per_1m=payload.price_prompt_per_1m,
+        price_completion_per_1m=payload.price_completion_per_1m,
+        source="manual",
+        is_available=True,
+        is_enabled=True,
+        discovered_at=datetime.now(timezone.utc),
+    )
+    db.add(new_model)
+
+    # Also add to provider.models list if not present
+    prov_models = list(provider.models or [])
+    if payload.model_id.strip() not in prov_models:
+        prov_models.append(payload.model_id.strip())
+        provider.models = prov_models
+
+    await db.commit()
+    await db.refresh(new_model)
+
+    logger.info(
+        f"ADMIN_AUDIT: user_id={current_admin.id} action=ADD_MANUAL_MODEL "
+        f"provider_id={provider_id} model_id={new_model.model_id}"
+    )
+
+    return ProviderModelRead.model_validate(new_model)
+
+
+@router.get("/models", response_model=LLMModelsResponse)
+async def get_provider_models(
+    provider_id: uuid.UUID = Query(..., description="ID of the provider"),
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> LLMModelsResponse:
+    """List available models for provider (queries catalog first, falls back to stored list)."""
+    res = await db.execute(select(LLMProvider).where(LLMProvider.id == provider_id))
+    provider = res.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM provider '{provider_id}' not found.",
+        )
+
+    cat_res = await db.execute(
+        select(ProviderModel.model_id)
+        .where(
+            ProviderModel.provider_id == provider_id,
+            ProviderModel.is_enabled == True,
+            ProviderModel.is_available == True,
+        )
+        .order_by(ProviderModel.model_id.asc())
+    )
+    cat_models = cat_res.scalars().all()
+    if cat_models:
+        return LLMModelsResponse(
+            provider_id=provider.id,
+            models=list(cat_models),
+            source="provider",
+        )
 
     return LLMModelsResponse(
         provider_id=provider.id,
-        models=stored_models,
+        models=list(provider.models or []),
         source="stored",
     )
 
 
 # ------------------------------------------------------------------------------
-# 4. LLM Runtime Settings Endpoints
+# 4. Usage & Cost Analytics Endpoints
+# ------------------------------------------------------------------------------
+
+@router.get("/usage", response_model=LLMUsageResponse)
+async def get_llm_usage(
+    range: str = Query("24h", pattern="^(24h|7d|30d)$", description="Aggregation time window"),
+    current_admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> LLMUsageResponse:
+    """Retrieve aggregate LLM usage, token counts, errors, and estimated cost."""
+    return await get_usage_summary(session=db, range_str=range)
+
+
+# ------------------------------------------------------------------------------
+# 5. LLM Runtime Settings Endpoints
 # ------------------------------------------------------------------------------
 
 @router.get("/settings", response_model=LLMSettingsResponse)
@@ -479,11 +858,32 @@ async def update_llm_settings(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Active provider '{active_prov.name}' is disabled and cannot be activated.",
         )
-    if payload.active_model not in active_prov.models:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Active model '{payload.active_model}' does not belong to provider '{active_prov.name}' models: {active_prov.models}",
+
+    # Validate active model in catalog or stored models
+    act_pm_res = await db.execute(
+        select(ProviderModel).where(
+            ProviderModel.provider_id == payload.active_provider_id,
+            ProviderModel.model_id == payload.active_model.strip(),
         )
+    )
+    act_pm = act_pm_res.scalar_one_or_none()
+    if act_pm:
+        if not act_pm.is_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Active model '{payload.active_model}' is disabled in the provider catalog.",
+            )
+        if not act_pm.is_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Active model '{payload.active_model}' is marked as unavailable by the provider.",
+            )
+    else:
+        if payload.active_model not in active_prov.models:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Active model '{payload.active_model}' does not belong to provider '{active_prov.name}' models: {active_prov.models}",
+            )
 
     # 2. Validate fallback provider if specified
     fallback_prov = None
@@ -505,11 +905,31 @@ async def update_llm_settings(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="fallback_model must be specified when fallback_provider_id is provided.",
             )
-        if payload.fallback_model not in fallback_prov.models:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Fallback model '{payload.fallback_model}' does not belong to provider '{fallback_prov.name}' models.",
+
+        fb_pm_res = await db.execute(
+            select(ProviderModel).where(
+                ProviderModel.provider_id == payload.fallback_provider_id,
+                ProviderModel.model_id == payload.fallback_model.strip(),
             )
+        )
+        fb_pm = fb_pm_res.scalar_one_or_none()
+        if fb_pm:
+            if not fb_pm.is_enabled:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Fallback model '{payload.fallback_model}' is disabled in the provider catalog.",
+                )
+            if not fb_pm.is_available:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Fallback model '{payload.fallback_model}' is marked as unavailable by the provider.",
+                )
+        else:
+            if payload.fallback_model not in fallback_prov.models:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Fallback model '{payload.fallback_model}' does not belong to provider '{fallback_prov.name}' models.",
+                )
     else:
         if payload.fallback_model:
             raise HTTPException(

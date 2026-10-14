@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Application & Environment Settings
     # --------------------------------------------------------------------------
     APP_ENV: str = "development"
+    PROJECT_NAME: str = "Enterprise AI Chatbot"
     LOG_LEVEL: str = "INFO"
     PORT: int = 8000
     HOST: str = "0.0.0.0"
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 10
     CORS_ORIGINS: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    RATE_LIMIT_PER_MINUTE: int = 60
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = 5
+    SSE_KEEPALIVE_INTERVAL: int = 15
 
     # --------------------------------------------------------------------------
     # Database, Redis & Vector Database Settings
@@ -37,6 +41,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/chatbot"
     REDIS_URL: str = "redis://redis:6379/0"
     QDRANT_URL: str = "http://qdrant:6333"
+    QDRANT_COLLECTION: str = "kb_chunks"
 
     # Optional initial admin user seed
     ADMIN_EMAIL: Optional[str] = None
@@ -75,7 +80,24 @@ class Settings(BaseSettings):
     EMBEDDING_API_KEY: Optional[SecretStr] = None
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
     EMBEDDING_DIM: int = 1024
+    SPARSE_MODEL: str = "Qdrant/bm25"
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
+
+    @property
+    def EMBEDDING_DIMENSION(self) -> int:
+        return self.EMBEDDING_DIM
+
+    @property
+    def RERANK_MODEL(self) -> str:
+        return self.RERANKER_MODEL
+
+    @property
+    def CHUNK_SIZE(self) -> int:
+        return self.CHUNK_SIZE_TOKENS
+
+    @property
+    def CHUNK_OVERLAP(self) -> int:
+        return self.CHUNK_OVERLAP_TOKENS
 
     # --------------------------------------------------------------------------
     # Ingestion, Chunking & Retrieval Parameters

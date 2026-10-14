@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import AdminDocManager from '@/components/AdminDocManager';
 import AdminUsers from '@/components/AdminUsers';
 import AdminLLMManager from '@/components/AdminLLMManager';
+import AdminSystemOverview from '@/components/AdminSystemOverview';
 import {
   Shield,
   ShieldAlert,
@@ -16,12 +17,13 @@ import {
   FileText,
   Users,
   Cpu,
+  Activity,
 } from 'lucide-react';
 
 export default function AdminPage() {
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'documents' | 'users' | 'llm'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'users' | 'llm' | 'system'>('documents');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -89,7 +91,9 @@ export default function AdminPage() {
                 ? 'Knowledge Base Ingestion & Lifecycle'
                 : activeTab === 'users'
                 ? 'User Access, Roles & Permissions'
-                : 'LLM Providers, Runtime Model & API Keys'}
+                : activeTab === 'llm'
+                ? 'LLM Providers, Runtime Model & API Keys'
+                : 'System Architecture, Telemetry & Settings'}
             </p>
           </div>
         </div>
@@ -129,6 +133,18 @@ export default function AdminPage() {
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>LLM Settings</span>
+          </button>
+          <button
+            id="admin-tab-system"
+            onClick={() => setActiveTab('system')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              activeTab === 'system'
+                ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>System</span>
           </button>
         </div>
 
@@ -195,6 +211,18 @@ export default function AdminPage() {
           <Cpu className="w-3.5 h-3.5" />
           <span>LLM</span>
         </button>
+        <button
+          id="admin-tab-system-mobile"
+          onClick={() => setActiveTab('system')}
+          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+            activeTab === 'system'
+              ? 'bg-emerald-500 text-gray-950 font-bold'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5" />
+          <span>System</span>
+        </button>
       </div>
 
       {/* Main Content Area */}
@@ -203,8 +231,10 @@ export default function AdminPage() {
           <AdminDocManager />
         ) : activeTab === 'users' ? (
           <AdminUsers />
-        ) : (
+        ) : activeTab === 'llm' ? (
           <AdminLLMManager />
+        ) : (
+          <AdminSystemOverview />
         )}
       </main>
     </div>

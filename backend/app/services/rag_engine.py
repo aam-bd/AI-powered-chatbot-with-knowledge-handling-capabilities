@@ -335,18 +335,25 @@ class RAGEngine:
         self,
         query: str,
         request_id: Optional[str] = None,
+        top_k: Optional[int] = None,
+        top_n: Optional[int] = None,
+        threshold: Optional[float] = None,
     ) -> RetrievalResult:
         """Full retrieval pipeline: hybrid search, cross-encoder rerank, and Layer 1 fallback check.
 
-        Layer 1: If top rerank score < settings.RERANK_THRESHOLD or no chunks retrieved,
+        Layer 1: If top rerank score < threshold or no chunks retrieved,
         returns structured result marked with is_fallback=True.
         """
         start_total = time.perf_counter()
 
+        actual_top_k = top_k if top_k is not None else settings.RETRIEVAL_TOP_K
+        actual_top_n = top_n if top_n is not None else settings.RERANK_TOP_N
+        actual_threshold = threshold if threshold is not None else settings.RERANK_THRESHOLD
+
         # Step 1: Hybrid retrieval
         candidates, latency_retrieval = self.hybrid_search(
             query=query,
-            top_k=settings.RETRIEVAL_TOP_K,
+            top_k=actual_top_k,
             request_id=request_id,
         )
 
@@ -354,7 +361,7 @@ class RAGEngine:
         reranked_chunks, latency_rerank = self.rerank(
             query=query,
             candidates=candidates,
-            top_n=settings.RERANK_TOP_N,
+            top_n=actual_top_n,
             request_id=request_id,
         )
 
@@ -367,20 +374,18 @@ class RAGEngine:
             raw_top_score = reranked_chunks[0].raw_rerank_score
 
         # Step 3: Layer 1 fallback gate
-        # Threshold comes ONLY from config
-        threshold = settings.RERANK_THRESHOLD
         is_fallback = False
         fallback_msg: Optional[str] = None
 
-        if not reranked_chunks or top_score is None or top_score < threshold:
+        if not reranked_chunks or top_score is None or top_score < actual_threshold:
             is_fallback = True
             fallback_msg = settings.FALLBACK_MESSAGE
             logger.info(
-                f"Layer 1 Fallback triggered: top_score={top_score} < threshold={threshold}",
+                f"Layer 1 Fallback triggered: top_score={top_score} < threshold={actual_threshold}",
                 request_id=request_id,
                 query=query,
                 top_score=top_score,
-                threshold=threshold,
+                threshold=actual_threshold,
                 is_fallback=True,
             )
         else:

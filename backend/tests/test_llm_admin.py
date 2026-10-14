@@ -457,7 +457,8 @@ def test_bootstrap_seeding_on_empty_table():
             p_res = await db.execute(select(LLMProvider))
             providers = p_res.scalars().all()
             assert len(providers) >= 1
-            default_p = providers[0]
+            default_p = next((p for p in providers if "Default" in p.name), None)
+            assert default_p is not None
             assert "Default" in default_p.name
 
             s_res = await db.execute(select(LLMSettings).where(LLMSettings.id == 1))

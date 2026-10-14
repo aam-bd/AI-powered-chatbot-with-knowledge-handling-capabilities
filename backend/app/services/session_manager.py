@@ -77,8 +77,16 @@ class SessionManager:
             # 1. Append message to the end of the list
             await self._redis.rpush(key, msg_json)
 
-            # 2. Trim list to retain only the last HISTORY_MESSAGES
+            # 2. Trim list to retain only the last HISTORY_MESSAGES (dynamic from system settings)
             max_history = int(settings.HISTORY_MESSAGES)
+            if max_history == 6:
+                try:
+                    from app.services.system_settings import system_settings_manager
+                    sys_settings = await system_settings_manager.get_settings()
+                    if sys_settings.history_messages != 6:
+                        max_history = int(sys_settings.history_messages)
+                except Exception:
+                    pass
             await self._redis.ltrim(key, -max_history, -1)
 
             # 3. Refresh sliding TTL
@@ -97,6 +105,7 @@ class SessionManager:
         self,
         user_id: str,
         session_id: str,
+        limit: Optional[int] = None,
     ) -> List[ChatMessage]:
         """Retrieve recent conversation history for a session.
 
@@ -108,8 +117,20 @@ class SessionManager:
         key = self._session_key(user_id, session_id)
         redis_failed = False
 
+        max_history = limit
+        if max_history is None:
+            max_history = int(settings.HISTORY_MESSAGES)
+            if max_history == 6:
+                try:
+                    from app.services.system_settings import system_settings_manager
+                    sys_settings = await system_settings_manager.get_settings()
+                    if sys_settings.history_messages != 6:
+                        max_history = int(sys_settings.history_messages)
+                except Exception:
+                    pass
+
         try:
-            raw_items = await self._redis.lrange(key, 0, -1)
+            raw_items = await self._redis.lrange(key, -max_history, -1)
             if raw_items:
                 messages: List[ChatMessage] = []
                 for item in raw_items:
@@ -141,7 +162,7 @@ class SessionManager:
                     .join(ChatSession, ChatMessageRecord.session_id == ChatSession.id)
                     .where(ChatSession.id == s_uuid, ChatSession.user_id == u_uuid)
                     .order_by(ChatMessageRecord.created_at.desc())
-                    .limit(int(settings.HISTORY_MESSAGES))
+                    .limit(max_history)
                 )
                 res = await db.execute(stmt)
                 records = res.scalars().all()

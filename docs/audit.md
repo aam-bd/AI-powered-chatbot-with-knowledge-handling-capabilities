@@ -224,3 +224,49 @@ Based on the audit findings, remediation is structured into the following sequen
 | **Sanitized Error Output** | Upstream provider test failures must not leak stack traces, internal URLs, or tokens. | `sanitize_llm_error_message()` strips authorization headers, token queries, file system paths, and internal IPs from external error strings. | **PASSED**: Tested in `test_test_provider_failure` and frontend error rendering in `AdminLLMManager.test.tsx`. |
 | **Non-Configurable Embeddings / Reranker** | Core embedding and cross-encoder models must remain immutable system models. | No admin APIs exist for embedding/reranker configuration. Displayed in UI as a read-only metadata card fetched from `/health`. | **PASSED**: Verified in `AdminLLMManager.tsx` and API route definitions. |
 
+---
+
+## Phase 7e-2: Model Auto-Discovery, Catalog & Telemetry Security Verification
+
+**Date:** 2026-10-13  
+**Status:** Verification Complete — All Controls Passed  
+**Coverage:** Prompt 7e-2 (Discovery, Presets, Catalog Management, and Usage Telemetry)
+
+### Security Verification Matrix
+
+| Control Area | Security Requirement | Implementation & Defense Mechanism | Verification Method & Status |
+|---|---|---|---|
+| **Discovery SSRF Protection** | Model discovery probes (saved and unsaved) must not probe internal subnets or cloud metadata endpoints. | `validate_base_url(url, allow_private)` strictly called in `discover_models` and `probe_unsaved_models` before issuing HTTP probes. | **PASSED**: Tested in `test_model_discovery.py`. Rejects loopback, private RFC 1918, and link-local addresses when `ALLOW_PRIVATE_LLM_URLS=False`. |
+| **Probe Secret Hygiene** | Unsaved credential probe must never log or persist probed API keys. | Probed keys are used strictly in-memory during discovery request and never written to DB or Loguru logs. | **PASSED**: Tested in `test_model_discovery.py`. Verified no key leakage in log output. |
+| **Non-Chat Model Filtering** | Upstream models list must not contaminate catalog with embedding, image, audio, or moderation models. | `NON_CHAT_SUBSTRINGS` filtering in `app/services/llm/discovery.py` strips non-chat model IDs returned by open endpoints. | **PASSED**: Tested in `test_discover_models_openrouter`. Models like `text-embedding-3-small` and `dall-e-3` are pruned. |
+| **Active / Fallback Model Invariant Guard** | Cannot disable or delete a model in `provider_models` if it is currently selected as active or fallback in settings. | `PATCH /providers/{id}/models/{model_id}` verifies `active_model` and `fallback_model` in `llm_settings` and rejects disablement with HTTP 409. | **PASSED**: Tested in `test_patch_catalog_model_and_active_protection`. |
+| **Settings Catalog Reconciliation** | `PUT /settings` must reject models that are not registered and enabled in `provider_models`. | `PUT /settings` queries `provider_models` and raises HTTP 422 if the requested active or fallback model is missing or disabled. | **PASSED**: Tested in `test_settings_validation_rejects_unowned_model_and_disabled_provider`. |
+| **Preset Identity Integrity** | Preset provider names cannot be renamed to arbitrary strings to preserve system identity and prevent impersonation. | `PATCH /providers/{id}` rejects attempts to modify `name` on rows where `is_preset=True` with HTTP 400. | **PASSED**: Tested in `test_preset_rename_guard`. |
+| **Preset URL Locking** | Preset endpoints should not be inadvertently corrupted by accidental edits in UI. | Frontend locks URL input for presets by default, requiring explicit click on "Unlock to edit" button. | **PASSED**: Tested in Vitest frontend suite (`AdminLLMManager.test.tsx`). |
+| **Telemetry Privacy & Integrity** | Telemetry tracking must never record user prompt text, completions, API keys, or raw embeddings. | `llm_usage` stores strictly numerical metrics (`prompt_tokens`, `completion_tokens`, `latency_ms`, `estimated_cost`), model ID, user ID, and status. | **PASSED**: Tested in `test_usage_tracking_and_summary_endpoint` and schema validation. |
+| **Non-Blocking Telemetry** | Telemetry logging failures must never abort, delay, or degrade chat streaming responses. | Wrapped in `asyncio.create_task` with isolated `try...except` and fresh database session in `record_llm_usage`. | **PASSED**: Tested in `chat.py` streaming integration. Chat stream completes successfully even if usage recording encounters errors. |
+
+---
+
+## Phase 7e-3: Admin System Overview & Control Security Verification
+
+**Date:** 2026-10-14  
+**Status:** Verification Complete — All Controls Passed  
+**Coverage:** Prompt 7e-3 (System Overview, Observability, Telemetry, and Dynamic Configuration)
+
+### Security Verification Matrix
+
+| Control Area | Security Requirement | Implementation & Defense Mechanism | Verification Method & Status |
+|---|---|---|---|
+| **Role-Based Authorization** | All 11 system overview & settings endpoints must strictly require administrator credentials. | `current_user: User = Depends(require_admin)` applied across all routes in `backend/app/api/v1/admin_system.py`. | **PASSED**: Tested in `test_admin_system_endpoints_require_admin`. Non-admin accounts and unauthenticated requests are rejected with 403 Forbidden / 401 Unauthorized. |
+| **Grounding Warning Alert** | Lowering reranker threshold below 0.5 weakens Layer 1 grounding; admins must be clearly warned and flagged. | Interactive warning banner in UI (`AdminSystemOverview.tsx`) whenever threshold < 0.50; backend flags `details["grounding_warning"] = True` in audit log. | **PASSED**: Tested in `test_system_settings_grounding_warning_flagged` and frontend test suite (`AdminSystemOverview.test.tsx`). |
+| **Retrieval Invariant Guard** | Rerank Top-N cannot exceed Retrieval Top-K (`rerank_top_n <= retrieval_top_k`). | Enforced on backend schema (`validate_settings_payload`), API route validation, and client-side UI form disabling save button with inline error. | **PASSED**: Tested in `test_system_settings_read_and_update_validation` and `AdminSystemOverview.test.tsx`. Throws 422 Unprocessable Entity if violated. |
+| **Upload Size Hard Cap** | Document upload size must be strictly bounded between 1 MB and 50 MB to prevent DoS memory exhaustion. | `max_upload_size_bytes` validated in range `[1_048_576, 52_428_800]` on settings update, and enforced in `documents.py` during upload. | **PASSED**: Tested in `test_system_settings_read_and_update_validation`. Exceeding 50MB is rejected with 422. |
+| **Immutable Architecture Models** | Core embedding and reranking models must NOT be editable at runtime to prevent collection dimension mismatch and crash. | Architecture parameters (`dense_model`, `dense_dim`, `sparse_model`, `reranker_model`, `chunk_size`) exposed via read-only endpoint `GET /admin/system/architecture` with explanatory notes. | **PASSED**: Verified in `test_architecture_overview_read_only` and UI read-only badge. |
+| **Zero User Message Leakage** | Chat quality telemetry must never log, aggregate, or expose raw user questions or generated answer text. | `GET /admin/system/quality` strictly aggregates numerical counts (`total_queries`, `fallback_count`, `fallback_rate`, `avg_retrieval_score`, `ungrounded_retractions`). Zero message text is queried or returned. | **PASSED**: Tested in `test_chat_quality_telemetry_aggregations_and_privacy`. Verified schema excludes message/content fields. |
+| **Environment Variable Allowlist** | Host/runtime inspection must never leak secrets, passwords, tokens, API keys, or database credentials. | `ALLOWLISTED_KEYS` set in `admin_system.py` strictly whitelists safe non-sensitive configuration keys (`APP_ENV`, `PROJECT_NAME`, `QDRANT_COLLECTION`, `RATE_LIMIT_PER_MINUTE`, etc.). | **PASSED**: Tested in `test_environment_allowlist_redaction`. Secrets, passwords, and connection strings are strictly omitted. |
+| **Audit Trail & Attribution** | Every system setting modification or factory reset must create an immutable audit record with admin user attribution. | `audit_logs` table records `user_id`, `user_email`, `action` (`SYSTEM_SETTINGS_UPDATE` / `SYSTEM_SETTINGS_RESET`), `details` JSON, and timestamp. | **PASSED**: Tested in `test_system_settings_reset_to_defaults` and `test_recent_activity_audit_logs`. |
+| **Safe Atomic Factory Reset** | "Reset to defaults" must restore all runtime values to `.env` baseline without deleting data or corrupting state. | `reset_to_defaults()` resets row `id=1` to default configuration values, bumps version, invalidates Redis cache, and logs audit record. | **PASSED**: Tested in `test_system_settings_reset_to_defaults` and frontend confirmation modal test. |
+
+
+

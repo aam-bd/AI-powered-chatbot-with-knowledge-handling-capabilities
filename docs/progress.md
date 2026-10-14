@@ -2,10 +2,10 @@
 Read this and docs/architecture.md at the start of every task. Update this file at the end of every task.
 
 ## Current status
-- Current phase: 7e (Admin LLM provider and API key management - Complete)
-- Last completed task: Prompt 7e Complete: Sections 1-4 Database/Bootstrap/API/Runtime, Section 5 Security verification pass (Fernet encryption at rest, zero secret leakage, SSRF validation, audit logging), Section 6 Frontend LLM Settings tab (`AdminLLMManager` mounted in `/admin`), and Section 7 Test Suite (116/116 backend pytest tests passing, 8/8 frontend vitest tests passing).
+- Current phase: 7e-3 (Admin System Overview - Full Visibility and Control - Complete)
+- Last completed task: Prompt 7e-3 Complete: Migration `005_system_overview_and_settings.py` (applied to dev & test DBs), `system_settings` single-row table with version tracking and `audit_logs` table, `SystemSettingsManager` singleton with Redis hot-reload and pub/sub broadcast, dynamic FastAPI route introspection from OpenAPI schema, per-dependency live health ping latencies (PostgreSQL, Redis, Qdrant), Qdrant collection stats and vector count sync, live architecture parameters display (read-only), Celery worker metrics and 15-minute document reconciler status, chat quality indicators (fallbacks, avg scores, ungrounded retractions, zero user messages exposed), allowlisted environment inspection, dynamic runtime settings enforcement (`reranker_threshold` with < 0.50 grounding warning, `retrieval_top_k`, `rerank_top_n` with `<= retrieval_top_k` invariant, `history_messages`, `rate_limit_per_minute`, `rate_limit_login_per_minute`, `sse_keepalive_interval`, `max_upload_size_bytes` with 1MB-50MB cap), factory reset confirmation modal with audit logging, frontend `AdminSystemOverview` component mounted under "System" tab, 137/137 backend tests passing, 17/17 frontend vitest tests passing, and Next.js production build cleanly compiled.
 - Next up: Prompt 7f (Final evaluation, README and clean start)
-- Status: Phase 7e Complete, 116 Backend Tests & 8 Frontend Tests Passing
+- Status: Phase 7e-3 Complete, 137 Backend Tests & 17 Frontend Tests Passing
 
 ## Phase checklist
 - [x] 0 Scaffold, config, logging, /health
@@ -21,14 +21,19 @@ Read this and docs/architecture.md at the start of every task. Update this file 
 - [x] 7c Persistent chat history
 - [x] 7d Admin user management
 - [x] 7e Admin LLM provider and API key management (Backend, Frontend, Tests, Security Complete)
+- [x] 7e-2 Model auto-discovery, preset providers, custom endpoint, model catalog, and usage tracking (Complete)
+- [x] 7e-3 Admin System Overview (full visibility and control - Complete)
 - [ ] 7f Final evaluation, README and clean start
 
 ## Requirements status (from architecture §1.1)
 C1 [x]  C2 [x]  C3 [x]  G1 [x]  G2 [x]  G3 [x]  G4 [x]
-G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
+G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]  E1 [x]
+E2 [x]  E3 [x]  E4 [x]  E5 [x]  E6 [x]
 
 ## Decisions and deviations from architecture.md
-- 2026-10-13: Admin LLM provider and API key management (Phase 7e Backend) - implemented Fernet symmetric encryption at rest for API keys (`SETTINGS_ENCRYPTION_KEY` env var; startup halted in production if invalid/missing). Created `llm_providers` and single-row `llm_settings` with migration `003_llm_providers`. Implemented SSRF validation for provider URLs (`ALLOW_PRIVATE_LLM_URLS` flag). Implemented bootstrap seeding on empty DB from `.env`, Redis pub/version-check cache invalidation for hot-reload in API and Celery workers, connection testing with rate limiting (10 req/min), sanitized error reporting, secret-free audit logging, and one-time fallback retry for chat generation without secret leaks.
+- 2026-10-14: Admin System Overview & Control (Phase 7e-3) - implemented migration `005_system_overview_and_settings.py` creating single-row `system_settings` table and `audit_logs` table. Implemented `SystemSettingsManager` with singleton in-memory caching, Redis version tracking (`system_settings:version`), and Redis pub/sub channel (`system_settings_channel`) for instant hot-reload across API workers and Celery processes without container restarts. Enforced strict invariants: `rerank_top_n <= retrieval_top_k`, `max_upload_size_bytes` hard-capped between 1 MB and 50 MB, and `reranker_threshold` bounded between 0.20 and 0.95 with prominent interactive grounding warning banner if set below 0.50 (Layer 1 gate relaxation risk). Ensured immutable architectural settings (dense model, dimension, sparse model, chunking parameters) are strictly read-only with explanatory guidance. Implemented dynamic FastAPI route introspection via OpenAPI paths, live per-dependency ping latencies, Qdrant collection segment/vector stats, Celery active worker telemetry with 15-minute reconciler tracking, chat quality telemetry (strictly zero user message text logged or exposed), recent audit activity trail, and safe allowlisted environment inspection. Added 11 backend acceptance tests (137/137 total passing) and 5 frontend vitest tests (17/17 total passing). Next.js standalone build compiled cleanly with zero errors.
+- 2026-10-13: Model auto-discovery, preset providers, catalog and usage tracking (Phase 7e-2) - implemented migration `004_model_discovery_and_usage.py` creating `provider_models` catalog table and `llm_usage` tracking table. Implemented preset providers (OpenRouter, OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama) seeded disabled and keyless on bootstrap and restorable via `POST /providers/restore-presets`. Implemented upstream discovery probes in `app/services/llm/discovery.py` supporting OpenRouter, OpenAI, Anthropic, Gemini native, and static models, enforcing SSRF validation and non-chat model filtering. Integrated non-blocking best-effort LLM usage telemetry via `asyncio.create_task` during SSE chat streaming, calculating estimated cost from catalog prompt/completion rates. Extended frontend with locked preset URLs, "Test & Discover" credentials probe, full model catalog modal with search/enable/manual addition, and an LLM Usage & Cost Analytics card with 24h/7d/30d filters.
+- 2026-10-13: Admin LLM provider and API key management (Phase 7e Backend & Frontend) - implemented Fernet symmetric encryption at rest for API keys (`SETTINGS_ENCRYPTION_KEY` env var; startup halted in production if invalid/missing). Created `llm_providers` and single-row `llm_settings` with migration `003_llm_providers`. Implemented SSRF validation for provider URLs (`ALLOW_PRIVATE_LLM_URLS` flag). Implemented bootstrap seeding on empty DB from `.env`, Redis pub/version-check cache invalidation for hot-reload in API and Celery workers, connection testing with rate limiting (10 req/min), sanitized error reporting, secret-free audit logging, and one-time fallback retry for chat generation without secret leaks.
 - 2026-10-11: Admin user management (Phase 7d) - implemented race-safe last active admin protection using PostgreSQL row-level locks (`select(User)...where(User.role == 'admin', User.is_active == True).with_for_update()`) inside an atomic transaction. Enforced immediate token invalidation on every request via `get_current_user` reading live `is_active` status and role from PostgreSQL, and instant refresh token revocation via Redis keys (`user_revoked:{user_id}`).
 - 2026-10-10: Persistent chat history (Phase 7c) - implemented server-assigned UUID session generation for unknown or non-UUID client session IDs, while strictly returning HTTP 404 for session IDs belonging to another user. Retained Redis as sliding 24h cache window with automatic PostgreSQL hydration on cache miss or restart.
 - 2026-10-06: Implemented strict evaluation dataset isolation in `calibrate_threshold.py` enforcing that calibration sweeps exclusively inspect `calibration_set.json` and raise hard errors if pointed to `test_set.json`.
@@ -53,6 +58,50 @@ G5 [x]  G6 [x]  G7 [x]  S1 [x]  S2 [x]  S3 [x]
 - None. Entire system (Phases 0–7) successfully audited, hardened, evaluated, and documented.
 
 ## Session log (newest first)
+### 2026-10-14 - Prompt 7e-3: Admin System Overview (Full Visibility and Control - Complete)
+- **Goal:** Provide full administrative visibility and dynamic control over the chatbot's runtime infrastructure, models, retrieval parameters, dependencies, workers, guardrails, and telemetry.
+- **Files Created/Modified:**
+  - `backend/app/db/migrations/versions/005_system_overview_and_settings.py`: Created migration for `system_settings` (single row id=1 with version tracking) and `audit_logs` (admin change history and details JSON). Applied to both dev and test databases.
+  - `backend/app/models/sql_models.py`: Added `SystemSettings` and `AuditLog` ORM models.
+  - `backend/app/models/schemas.py`: Added schemas for `SystemHealthResponse`, `DependencyHealth`, `RouteInfoItem`, `SystemRoutesResponse`, `VectorStoreStatsResponse`, `ArchitectureOverviewResponse`, `WorkerStatsResponse`, `ChatQualityIndicatorsResponse`, `AuditLogEntryResponse`, `RecentActivityResponse`, `SystemSettingsResponse`, `SystemSettingsUpdate`, and `SystemEnvironmentResponse`.
+  - `backend/app/core/config.py`: Added `PROJECT_NAME`, `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_LOGIN_PER_MINUTE`, `SSE_KEEPALIVE_INTERVAL`, `SPARSE_MODEL`, `QDRANT_COLLECTION`, and property aliases for embedding and chunking parameters.
+  - `backend/app/core/rate_limit.py`: Enhanced `RateLimiter` to dynamically resolve runtime limits from `SystemSettingsManager`.
+  - `backend/app/services/system_settings.py`: Implemented `SystemSettingsManager` with singleton in-memory caching, Redis version tracking (`system_settings:version`), Pub/Sub channel (`system_settings_channel`), update validation, grounding warning detection (`reranker_threshold < 0.50`), audit logging, and `reset_to_defaults()`.
+  - `backend/app/services/session_manager.py`: Updated `append_message` and `get_history` to dynamically respect `history_messages` from system settings while preserving monkeypatching in unit tests.
+  - `backend/app/services/rag_engine.py`: Updated `retrieve()` signature to accept optional runtime `top_k`, `top_n`, `threshold`.
+  - `backend/app/api/v1/chat.py`: Injected dynamic retrieval parameters and threshold into `rag_engine.retrieve()` and query log recording with fallback compatibility for mock retrieval lambdas.
+  - `backend/app/api/v1/documents.py`: Updated file upload validation to enforce dynamic `max_upload_size_bytes`.
+  - `backend/app/workers/tasks_reconcile.py`: Recorded reconciler execution status, timestamps, and fixed counts in Redis.
+  - `backend/app/api/v1/admin_system.py`: Implemented 11 admin-only endpoints (`/health`, `/routes`, `/vector-store`, `/architecture`, `/workers`, `/quality`, `/activity`, `/settings` [GET/PUT], `/settings/reset`, `/environment`).
+  - `backend/app/api/router.py`: Mounted `admin_system_router` at `/api/v1`.
+  - `backend/tests/test_admin_system.py`: Added 11 comprehensive backend unit and integration tests.
+  - `frontend/src/types/chat.ts`: Added all 11 TypeScript interfaces for system overview and settings.
+  - `frontend/src/services/api.ts`: Added 11 API client methods.
+  - `frontend/src/components/AdminSystemOverview.tsx`: Created 9-section observatory component with live telemetry, grounding guardrail warning alert, settings form with invariant validation, reset confirmation modal, and audit activity.
+  - `frontend/src/app/admin/page.tsx`: Mounted "System" tab in desktop and mobile tab switchers.
+  - `frontend/src/components/__tests__/AdminSystemOverview.test.tsx`: Created 5 frontend vitest tests covering rendering, dependency latencies, grounding warning alerts, invariant validation, settings update, and factory reset.
+  - `docs/architecture.md`, `docs/progress.md`, `docs/audit.md`: Updated architecture specifications, progress log, and audit records.
+- **Verification:** 137/137 backend pytest tests passing; 17/17 frontend vitest tests passing; Next.js production build (`npm run build`) succeeded with 0 errors.
+
+### 2026-10-13 - Prompt 7e-2: Model auto-discovery, preset providers, custom endpoint, provider model catalog, and usage tracking (Complete)
+- **Goal:** Implement auto-discovery probes across OpenRouter, OpenAI, Anthropic, Gemini Native, and static adapters; seed and restore default preset providers; maintain a persistent `provider_models` catalog with enablement and price overrides; record asynchronous non-blocking LLM usage telemetry during streaming; and provide frontend model catalog management and usage/cost analytics dashboards.
+- **Files Created/Modified:**
+  - `backend/app/db/migrations/versions/004_model_discovery_and_usage.py`: Created migration adding `provider_models` and `llm_usage` tables, plus `is_preset`, `preset_key`, `is_enabled`, `discovery_kind`, `models` columns to `llm_providers`. Executed on both dev (`chatbot`) and test (`chatbot_test`) PostgreSQL databases.
+  - `backend/app/models/sql_models.py`: Added `ProviderModel` and `LLMUsage` SQLAlchemy ORM models with cascading relationships and composite indexes.
+  - `backend/app/models/schemas.py`: Added Pydantic schemas for `ProviderModelResponse`, `ProviderModelUpdate`, `ManualModelCreate`, `LLMUsageResponse`, `LLMUsageSummaryItem`, `DiscoveredModelResponse`, and `DiscoverUnsavedRequest`.
+  - `backend/app/services/llm/discovery.py`: Implemented discovery probes (`discover_models`, `probe_unsaved_models`, `reconcile_provider_models`) for OpenRouter, OpenAI, Anthropic, Gemini Native, and static adapters with SSRF validation via `validate_base_url` and non-chat model filtering.
+  - `backend/app/services/llm/runtime.py`: Added `PRESETS` catalog (OpenRouter, OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama), idempotent `seed_presets`, and preset name mutation protection.
+  - `backend/app/services/llm/usage.py`: Implemented best-effort non-blocking `record_llm_usage` and `get_usage_summary(session, range_str)` aggregating request counts, token metrics, errors, avg latencies, and catalog-based cost calculations.
+  - `backend/app/api/v1/chat.py`: Embedded non-blocking `asyncio.create_task(record_llm_usage(...))` into chat streaming.
+  - `backend/app/api/v1/admin_llm.py`: Added endpoints `POST /providers/restore-presets`, `POST /providers/discover-unsaved`, `POST /providers/{id}/discover`, `GET /providers/{id}/models`, `PATCH /providers/{id}/models/{model_id}`, `POST /providers/{id}/models/manual`, and `GET /usage`. Updated `PUT /settings` to validate requested models against `provider_models` catalog.
+  - `backend/tests/test_model_discovery.py`: Created comprehensive 10-test suite covering presets seeding and restore, preset rename guard, discovery mocks across all upstream formats, catalog reconciliation, active model disablement protection, manual model creation, and usage tracking and aggregation.
+  - `frontend/src/types/chat.ts`: Added types for `ProviderModel`, `DiscoveredModel`, `LLMUsageResponse`, `LLMUsageSummaryItem`, `ManualModelInput`, `DiscoverUnsavedInput`.
+  - `frontend/src/services/api.ts`: Added client methods for discovery, presets restoration, catalog management, and usage telemetry.
+  - `frontend/src/components/AdminLLMManager.tsx`: Upgraded UI with locked preset URLs (with unlock button), "Test & Discover" credentials probe button, Model Catalog modal with search, enable checkboxes, manual price overrides, and "Add Manual Model" dialog, "Restore Presets" toolbar button, and new LLM Usage & Cost Analytics card with 24h/7d/30d filters and breakdown table.
+  - `frontend/src/components/__tests__/AdminLLMManager.test.tsx`: Expanded test suite to 12 tests covering preset URL lock/unlock, presets restoration, catalog modal search/filtering and model enablement toggle, and LLM usage analytics rendering with time range switching.
+  - `docs/architecture.md`, `docs/progress.md`, `docs/audit.md`: Updated architecture specifications, progress log, and security audit log.
+- **Verification:** 126/126 backend pytest tests passing; 12/12 frontend vitest tests passing; Next.js production build (`npm run build`) succeeded with 0 errors.
+
 ### 2026-10-13 - Prompt 7e: Admin LLM Provider & Settings (Stage 2: Frontend, Security Verification & Test Suite Complete)
 - **Goal:** Carry out Prompt 7e section 6 (Frontend LLM Settings tab), section 5 (Security verification pass), key removal (`clear_api_key`), and remaining section 7 tests (frontend RTL/Vitest suite and backend E2E hot-reload/failover suite).
 - **Files Created/Modified:**

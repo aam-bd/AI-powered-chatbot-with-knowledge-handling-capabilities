@@ -47,9 +47,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def validate_file_content(content: bytes, ext: str, max_bytes: int):
     """Validate file size and magic bytes."""
     if len(content) > max_bytes:
+        limit_mb = round(max_bytes / (1024 * 1024), 2)
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds maximum allowed size of {settings.MAX_UPLOAD_MB}MB.",
+            detail=f"File exceeds maximum allowed size of {limit_mb}MB.",
         )
 
     if ext == "pdf":
@@ -92,6 +93,12 @@ async def upload_document(
     """Admin-only document upload endpoint supporting multipart file or JSON web URL."""
     content_type = request.headers.get("content-type", "")
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    try:
+        from app.services.system_settings import system_settings_manager
+        sys_settings = await system_settings_manager.get_settings()
+        max_bytes = sys_settings.max_upload_size_bytes
+    except Exception:
+        pass
 
     if "application/json" in content_type:
         try:

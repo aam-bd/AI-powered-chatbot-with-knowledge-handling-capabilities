@@ -235,63 +235,225 @@ class RuntimeLLMManager:
 runtime_llm_manager = RuntimeLLMManager()
 
 
+PRESET_DEFINITIONS: List[Dict[str, Any]] = [
+    {
+        "preset_key": "openrouter",
+        "name": "OpenRouter",
+        "provider_type": "openai_compatible",
+        "base_url": "https://openrouter.ai/api/v1",
+        "docs_url": "https://openrouter.ai/docs",
+        "key_required": True,
+        "discovery_kind": "openrouter_models",
+        "default_model": "meta-llama/llama-3.3-70b-instruct",
+        "models": ["meta-llama/llama-3.3-70b-instruct", "google/gemini-2.0-flash-001"],
+    },
+    {
+        "preset_key": "openai",
+        "name": "OpenAI",
+        "provider_type": "openai_compatible",
+        "base_url": "https://api.openai.com/v1",
+        "docs_url": "https://platform.openai.com/docs/models",
+        "key_required": True,
+        "discovery_kind": "openai_models",
+        "default_model": "gpt-4o-mini",
+        "models": ["gpt-4o-mini", "gpt-4o"],
+    },
+    {
+        "preset_key": "anthropic",
+        "name": "Anthropic",
+        "provider_type": "anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "docs_url": "https://docs.anthropic.com/en/docs/about-claude/models",
+        "key_required": True,
+        "discovery_kind": "anthropic_models",
+        "default_model": "claude-3-5-haiku-20241022",
+        "models": ["claude-3-5-haiku-20241022", "claude-3-7-sonnet-20250219"],
+    },
+    {
+        "preset_key": "google",
+        "name": "Google AI Studio / Gemini",
+        "provider_type": "openai_compatible",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "docs_url": "https://ai.google.dev/gemini-api/docs/models/gemini",
+        "key_required": True,
+        "discovery_kind": "gemini_native_models",
+        "default_model": "gemini-2.0-flash",
+        "models": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"],
+    },
+    {
+        "preset_key": "groq",
+        "name": "Groq",
+        "provider_type": "openai_compatible",
+        "base_url": "https://api.groq.com/openai/v1",
+        "docs_url": "https://console.groq.com/docs/models",
+        "key_required": True,
+        "discovery_kind": "openai_models",
+        "default_model": "llama-3.3-70b-versatile",
+        "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+    },
+    {
+        "preset_key": "deepseek",
+        "name": "DeepSeek",
+        "provider_type": "openai_compatible",
+        "base_url": "https://api.deepseek.com/v1",
+        "docs_url": "https://api-docs.deepseek.com",
+        "key_required": True,
+        "discovery_kind": "openai_models",
+        "default_model": "deepseek-chat",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+    },
+    {
+        "preset_key": "ollama",
+        "name": "Ollama (Local)",
+        "provider_type": "openai_compatible",
+        "base_url": "http://host.docker.internal:11434/v1",
+        "docs_url": "https://ollama.com",
+        "key_required": False,
+        "discovery_kind": "openai_models",
+        "default_model": "llama3.2:latest",
+        "models": ["llama3.2:latest"],
+    },
+]
+
+
+async def seed_presets(session: AsyncSessionLocal) -> int:
+    """Idempotently seed preset providers into PostgreSQL without overwriting admin edits."""
+    from app.models.sql_models import ProviderModel
+    created_count = 0
+    for preset in PRESET_DEFINITIONS:
+        res = await session.execute(
+            select(LLMProvider).where(
+                (LLMProvider.preset_key == preset["preset_key"]) |
+                (LLMProvider.name == preset["name"])
+            )
+        )
+        if res.scalars().first() is not None:
+            continue
+
+        p_id = uuid.uuid4()
+        prov = LLMProvider(
+            id=p_id,
+            name=preset["name"],
+            preset_key=preset["preset_key"],
+            is_preset=True,
+            provider_type=preset["provider_type"],
+            base_url=preset["base_url"],
+            docs_url=preset["docs_url"],
+            key_required=preset["key_required"],
+            discovery_kind=preset["discovery_kind"],
+            api_key_encrypted=None,
+            models=preset["models"],
+            default_model=preset["default_model"],
+            is_enabled=False,
+            discovered_count=len(preset["models"]),
+            discovered_at=None,
+        )
+        session.add(prov)
+        await session.flush()
+
+        for m_id in preset["models"]:
+            pm = ProviderModel(
+                id=uuid.uuid4(),
+                provider_id=p_id,
+                model_id=m_id,
+                display_name=m_id,
+                source="manual",
+                is_available=True,
+                is_enabled=True,
+            )
+            session.add(pm)
+
+        created_count += 1
+
+    if created_count > 0:
+        await session.commit()
+        logger.info(f"Seeded {created_count} missing preset LLM providers.")
+    return created_count
+
+
 async def bootstrap_llm_settings() -> None:
-    """Bootstrap default provider and settings in PostgreSQL from .env if table is empty."""
+    """Bootstrap default provider, presets, and settings in PostgreSQL from .env."""
+    from app.models.sql_models import ProviderModel
     try:
         async with AsyncSessionLocal() as session:
             count_res = await session.execute(select(LLMProvider.id).limit(1))
-            if count_res.scalar_one_or_none() is not None:
-                # Table already has rows; database is the source of truth
-                return
+            has_providers = count_res.scalar_one_or_none() is not None
 
-            # llm_providers is empty. Check if .env has configuration
-            key = (settings.LLM_API_KEY.get_secret_value() if settings.LLM_API_KEY else None) or \
-                  (settings.ANSWER_LLM_API_KEY.get_secret_value() if settings.ANSWER_LLM_API_KEY else None)
-            
-            answer_model = settings.ANSWER_MODEL or settings.FAST_MODEL or "gemini-3.1-flash-lite"
-            fast_model = settings.FAST_MODEL or answer_model
-            models_list = list(dict.fromkeys([m for m in [answer_model, fast_model] if m]))
+            if not has_providers:
+                # llm_providers is empty. Create default from .env
+                key = (settings.LLM_API_KEY.get_secret_value() if settings.LLM_API_KEY else None) or \
+                      (settings.ANSWER_LLM_API_KEY.get_secret_value() if settings.ANSWER_LLM_API_KEY else None)
+                
+                answer_model = settings.ANSWER_MODEL or settings.FAST_MODEL or "gemini-3.1-flash-lite"
+                fast_model = settings.FAST_MODEL or answer_model
+                models_list = list(dict.fromkeys([m for m in [answer_model, fast_model] if m]))
 
-            provider_name = f"Default {settings.LLM_PROVIDER.replace('_', ' ').title()}"
-            encrypted_key = encrypt_api_key(key) if key else None
+                provider_name = f"Default {settings.LLM_PROVIDER.replace('_', ' ').title()}"
+                encrypted_key = encrypt_api_key(key) if key else None
 
-            provider = LLMProvider(
-                id=uuid.uuid4(),
-                name=provider_name,
-                provider_type=settings.LLM_PROVIDER,
-                base_url=settings.LLM_BASE_URL,
-                api_key_encrypted=encrypted_key,
-                models=models_list,
-                default_model=answer_model,
-                is_enabled=True,
-                last_test_status=None,
-                last_test_at=None,
+                provider = LLMProvider(
+                    id=uuid.uuid4(),
+                    name=provider_name,
+                    provider_type=settings.LLM_PROVIDER,
+                    base_url=settings.LLM_BASE_URL,
+                    api_key_encrypted=encrypted_key,
+                    models=models_list,
+                    default_model=answer_model,
+                    is_enabled=True,
+                    is_preset=False,
+                    preset_key=None,
+                    key_required=True,
+                    discovery_kind="openai_models",
+                    discovered_count=len(models_list),
+                    last_test_status=None,
+                    last_test_at=None,
+                )
+                session.add(provider)
+                await session.flush()
+
+                for m_id in models_list:
+                    pm = ProviderModel(
+                        id=uuid.uuid4(),
+                        provider_id=provider.id,
+                        model_id=m_id,
+                        display_name=m_id,
+                        source="manual",
+                        is_available=True,
+                        is_enabled=True,
+                    )
+                    session.add(pm)
+
+                llm_settings_row = LLMSettings(
+                    id=1,
+                    active_provider_id=provider.id,
+                    active_model=answer_model,
+                    fallback_provider_id=None,
+                    fallback_model=None,
+                    temperature=0.0,
+                    max_tokens=1024,
+                    version=1,
+                )
+                session.add(llm_settings_row)
+                await session.commit()
+
+                # Initialize Redis version key
+                try:
+                    redis_client = get_redis_client()
+                    await redis_client.set(REDIS_VERSION_KEY, "1")
+                except Exception:
+                    pass
+
+                logger.info(
+                    f"Bootstrapped default LLM provider '{provider_name}' and settings from .env configuration."
+                )
+
+            # Check if presets have ever been seeded
+            preset_check = await session.execute(
+                select(LLMProvider.id).where(LLMProvider.is_preset == True).limit(1)
             )
-            session.add(provider)
-            await session.flush()
+            if preset_check.scalar_one_or_none() is None:
+                await seed_presets(session)
 
-            llm_settings_row = LLMSettings(
-                id=1,
-                active_provider_id=provider.id,
-                active_model=answer_model,
-                fallback_provider_id=None,
-                fallback_model=None,
-                temperature=0.0,
-                max_tokens=1024,
-                version=1,
-            )
-            session.add(llm_settings_row)
-            await session.commit()
-
-            # Initialize Redis version key
-            try:
-                redis_client = get_redis_client()
-                await redis_client.set(REDIS_VERSION_KEY, "1")
-            except Exception:
-                pass
-
-            logger.info(
-                f"Bootstrapped default LLM provider '{provider_name}' and settings from .env configuration."
-            )
     except Exception as exc:
         logger.error(f"Failed to bootstrap LLM settings: {exc}")
+
