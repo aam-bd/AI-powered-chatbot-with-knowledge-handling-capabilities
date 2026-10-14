@@ -5,6 +5,7 @@ import { ChatMessage, CitationItem } from '@/types/chat';
 import { streamChat } from '@/services/streamChat';
 import { fetchSessionMessages } from '@/services/api';
 import CitationsDrawer from './CitationsDrawer';
+import AccessibilityTrigger from './AccessibilityTrigger';
 import {
   Send,
   Loader2,
@@ -259,7 +260,7 @@ export default function ChatWindow({
                 key={i}
                 type="button"
                 onClick={() => handleOpenDrawer(citations, tag)}
-                className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition-colors align-baseline"
+                className="inline-flex items-center px-2 py-0.5 mx-0.5 rounded-md text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-colors align-baseline"
                 title={found ? `${found.document} (p. ${found.page ?? 'N/A'})` : `Citation ${tag}`}
               >
                 [{tag}]
@@ -280,23 +281,25 @@ export default function ChatWindow({
           {onToggleSidebar && (
             <button
               onClick={onToggleSidebar}
-              className="md:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              className="md:hidden touch-target p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
               title="Toggle Sessions Menu"
+              aria-label="Toggle Sessions Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-medium text-gray-300">
+          <span className="text-xs font-medium text-gray-200">
             Session: <span className="font-mono text-emerald-400">{sessionId ? `${sessionId.slice(0, 8)}...` : 'New Chat'}</span>
           </span>
         </div>
 
         <div className="flex items-center gap-2">
+          <AccessibilityTrigger variant="navbar" />
           {onNewChat && (
             <button
               onClick={onNewChat}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 border border-gray-700"
+              className="text-xs px-3 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-200 hover:text-white transition-colors flex items-center gap-1.5 border border-gray-700"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset Chat</span>
@@ -329,7 +332,7 @@ export default function ChatWindow({
             <h2 className="text-xl font-bold text-white mb-2">
               Knowledge-Base AI Assistant
             </h2>
-            <p className="text-sm text-gray-400 mb-8 leading-relaxed">
+            <p className="text-sm text-slate-300 mb-8 leading-relaxed">
               Ask questions grounded strictly in the verified knowledge base. Every answer cites exact source documents and pages.
             </p>
 
@@ -343,9 +346,9 @@ export default function ChatWindow({
                 <button
                   key={i}
                   onClick={() => handleSendMessage(suggestion)}
-                  className="p-3.5 rounded-xl text-left text-xs text-gray-300 bg-gray-900/60 hover:bg-gray-800/80 border border-gray-800 hover:border-emerald-500/40 transition-all duration-200 group flex items-start gap-2.5"
+                  className="p-3.5 rounded-xl text-left text-sm text-slate-200 bg-gray-900/80 hover:bg-gray-800 border border-gray-700/80 hover:border-emerald-500/50 transition-all duration-200 group flex items-start gap-2.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                  <Sparkles className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
                   <span className="line-clamp-2">{suggestion}</span>
                 </button>
               ))}
@@ -393,8 +396,8 @@ export default function ChatWindow({
                   {/* Citations bar underneath assistant message */}
                   {!isUser && msg.citations && msg.citations.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-1 pl-1">
-                      <span className="text-[11px] text-gray-500 font-medium flex items-center gap-1 mr-1">
-                        <BookOpen className="w-3 h-3 text-emerald-400" />
+                      <span className="text-xs text-slate-300 font-semibold flex items-center gap-1 mr-1">
+                        <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
                         Sources:
                       </span>
                       {msg.citations.map((cite, i) => (
@@ -402,12 +405,12 @@ export default function ChatWindow({
                           key={`${cite.chunk_id}-${i}`}
                           type="button"
                           onClick={() => handleOpenDrawer(msg.citations!, cite.tag)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/40 transition-all duration-150"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 transition-all duration-150"
                         >
-                          <FileText className="w-3 h-3 text-emerald-400" />
+                          <FileText className="w-3.5 h-3.5 text-emerald-400" />
                           <span className="truncate max-w-[150px]">{cite.document}</span>
                           {cite.page !== null && cite.page !== undefined && (
-                            <span className="text-[10px] text-emerald-400/80">p.{cite.page}</span>
+                            <span className="text-xs text-emerald-300/90 font-medium">p.{cite.page}</span>
                           )}
                         </button>
                       ))}
@@ -432,12 +435,13 @@ export default function ChatWindow({
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
               rows={1}
+              aria-label="Ask a question from the knowledge base"
               placeholder={
                 isStreaming
                   ? 'Generating grounded answer...'
                   : 'Ask a question from the knowledge base (Enter to send, Shift+Enter for newline)...'
               }
-              className="w-full pl-4 pr-14 py-3.5 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none resize-none max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full pl-4 pr-14 py-3.5 bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none resize-none max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
             />
 
             <button
@@ -445,6 +449,7 @@ export default function ChatWindow({
               type="button"
               onClick={() => handleSendMessage()}
               disabled={isStreaming || !inputValue.trim()}
+              aria-label="Send message"
               className="absolute right-2.5 bottom-2.5 w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all duration-150 shadow-md shadow-emerald-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-800"
               title="Send Message"
             >
@@ -455,9 +460,9 @@ export default function ChatWindow({
               )}
             </button>
           </div>
-          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 px-1">
+          <div className="flex items-center justify-between text-xs text-slate-300 mt-2 px-1">
             <span>Only answers grounded in indexed documents with strict citations.</span>
-            <span>Shift+Enter for new line</span>
+            <span className="hidden sm:inline">Shift+Enter for new line</span>
           </div>
         </div>
       </div>

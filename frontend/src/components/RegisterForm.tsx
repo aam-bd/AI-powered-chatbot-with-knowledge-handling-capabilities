@@ -64,7 +64,7 @@ export default function RegisterForm() {
             <Shield className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Create Account</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-slate-300 font-medium mt-1">
             Register for access to the Knowledge-Base RAG Chatbot
           </p>
         </div>
@@ -78,11 +78,11 @@ export default function RegisterForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+            <label htmlFor="register-email" className="block text-xs font-semibold uppercase tracking-wider text-slate-200 mb-2">
               Email Address
             </label>
             <div className="relative">
-              <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="register-email"
                 type="email"
@@ -90,17 +90,17 @@ export default function RegisterForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
                 required
-                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
-              Password <span className="text-gray-400 font-normal lowercase">(min 10 chars)</span>
+            <label htmlFor="register-password" className="block text-xs font-semibold uppercase tracking-wider text-slate-200 mb-2">
+              Password <span className="text-slate-400 font-normal lowercase">(min 10 chars)</span>
             </label>
             <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="register-password"
                 type="password"
@@ -109,17 +109,17 @@ export default function RegisterForm() {
                 placeholder="••••••••••••"
                 required
                 minLength={10}
-                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+            <label htmlFor="register-confirm-password" className="block text-xs font-semibold uppercase tracking-wider text-slate-200 mb-2">
               Confirm Password
             </label>
             <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="register-confirm-password"
                 type="password"
@@ -128,7 +128,7 @@ export default function RegisterForm() {
                 placeholder="••••••••••••"
                 required
                 minLength={10}
-                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </div>
@@ -154,11 +154,11 @@ export default function RegisterForm() {
         </form>
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-slate-300 font-medium">
             Already have an account?{' '}
             <Link
               href="/login"
-              className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
             >
               Sign in
             </Link>

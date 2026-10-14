@@ -962,12 +962,12 @@ export default function AdminLLMManager() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <span>Active Model & Generation Parameters</span>
                 {settings && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-bold">
                     v{settings.version}
                   </span>
                 )}
               </h2>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-xs text-slate-300 font-medium">
                 Configure primary answer model, failover recovery, and sampling parameters.
               </p>
             </div>
@@ -979,7 +979,7 @@ export default function AdminLLMManager() {
             className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-md ${
               isSettingsModified && isSettingsValid
                 ? 'bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold shadow-emerald-500/20'
-                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700/50'
+                : 'bg-gray-800 text-slate-400 cursor-not-allowed border border-gray-700/50'
             }`}
           >
             {isSavingSettings ? (
@@ -1006,7 +1006,7 @@ export default function AdminLLMManager() {
             </h3>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-gray-300">Active Provider</label>
+              <label className="text-xs font-semibold text-slate-200">Active Provider</label>
               <select
                 value={selectedActiveProviderId}
                 onChange={(e) => setSelectedActiveProviderId(e.target.value)}
@@ -1023,7 +1023,7 @@ export default function AdminLLMManager() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-gray-300">Active Model (Enabled in Catalog)</label>
+              <label className="text-xs font-semibold text-slate-200">Active Model (Enabled in Catalog)</label>
               <select
                 value={selectedActiveModel}
                 onChange={(e) => setSelectedActiveModel(e.target.value)}
@@ -1040,13 +1040,13 @@ export default function AdminLLMManager() {
 
           {/* Fallback Provider & Model Column */}
           <div className="space-y-4 p-4 rounded-xl bg-gray-900/60 border border-gray-800/60">
-            <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-gray-400" />
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
               <span>Fallback Provider (Optional)</span>
             </h3>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-gray-300">Fallback Provider</label>
+              <label className="text-xs font-semibold text-slate-200">Fallback Provider</label>
               <select
                 value={selectedFallbackProviderId}
                 onChange={(e) => setSelectedFallbackProviderId(e.target.value)}
@@ -1065,7 +1065,7 @@ export default function AdminLLMManager() {
 
             {selectedFallbackProviderId !== 'none' && (
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-300">Fallback Model</label>
+                <label className="text-xs font-semibold text-slate-200">Fallback Model</label>
                 <select
                   value={selectedFallbackModel}
                   onChange={(e) => setSelectedFallbackModel(e.target.value)}
@@ -1085,8 +1085,8 @@ export default function AdminLLMManager() {
         {/* Sampling Parameters (Temperature & Max Tokens) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 p-4 rounded-xl bg-gray-900/40 border border-gray-800/40">
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <label className="font-medium text-gray-300">Temperature</label>
+            <div className="flex items-center justify-between text-xs">
+              <label className="font-semibold text-slate-200">Temperature</label>
               <span className="font-mono text-emerald-400 font-bold">{temperature.toFixed(2)}</span>
             </div>
             <input
@@ -1098,12 +1098,12 @@ export default function AdminLLMManager() {
               onChange={(e) => setTemperature(parseFloat(e.target.value))}
               className="w-full accent-emerald-500 cursor-pointer"
             />
-            <p className="text-[10px] text-gray-400">0.0 = deterministic and focused; 1.0+ = creative sampling.</p>
+            <p className="text-xs text-slate-300 font-medium">0.0 = deterministic and focused; 1.0+ = creative sampling.</p>
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <label className="font-medium text-gray-300">Max Tokens</label>
+            <div className="flex items-center justify-between text-xs">
+              <label className="font-semibold text-slate-200">Max Tokens</label>
               <span className="font-mono text-emerald-400 font-bold">{maxTokens}</span>
             </div>
             <input
@@ -1115,12 +1115,12 @@ export default function AdminLLMManager() {
               onChange={(e) => setMaxTokens(parseInt(e.target.value, 10) || 1024)}
               className="w-full px-3 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
             />
-            <p className="text-[10px] text-gray-400">Maximum response length generation boundary (1 to 32768).</p>
+            <p className="text-xs text-slate-300 font-medium">Maximum response length generation boundary (1 to 32768).</p>
           </div>
         </div>
 
         {/* In-Flight Stream Isolation Notice */}
-        <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-300/80 text-[11px] flex items-center gap-2">
+        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-2">
           <Info className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>
             Changes apply immediately to new chats via Redis hot-reload. In-flight streams complete using the model
@@ -1188,7 +1188,7 @@ export default function AdminLLMManager() {
         {/* Providers Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-gray-300">
-            <thead className="bg-gray-900/60 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-800 tracking-wider">
+            <thead className="bg-gray-900/60 text-xs uppercase font-bold text-slate-300 border-b border-gray-800 tracking-wider">
               <tr>
                 <th className="py-3 px-3">Provider Name</th>
                 <th className="py-3 px-3">Type</th>
@@ -1210,22 +1210,22 @@ export default function AdminLLMManager() {
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-white">{p.name}</span>
                         {p.is_preset && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20 uppercase">
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 uppercase">
                             Preset
                           </span>
                         )}
                         {isActive && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
                             Active
                           </span>
                         )}
                         {isFallback && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase">
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase">
                             Fallback
                           </span>
                         )}
                         {!p.is_enabled && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-800 text-gray-400 uppercase">
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-slate-300 uppercase">
                             Disabled
                           </span>
                         )}
@@ -1233,49 +1233,49 @@ export default function AdminLLMManager() {
                     </td>
 
                     <td className="py-3.5 px-3">
-                      <span className="px-2 py-0.5 rounded-md bg-gray-900 text-gray-300 font-mono text-[10px] border border-gray-800">
+                      <span className="px-2 py-0.5 rounded-md bg-gray-900 text-slate-200 font-mono text-xs border border-gray-800">
                         {p.provider_type}
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-3 font-mono text-[11px] text-gray-400 max-w-[200px] truncate" title={p.base_url}>
+                    <td className="py-3.5 px-3 font-mono text-xs text-slate-300 max-w-[200px] truncate" title={p.base_url}>
                       {p.base_url}
                     </td>
 
                     <td className="py-3.5 px-3">
                       {(p.has_api_key ?? p.has_key) ? (
-                        <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-[11px]">
-                          <Key className="w-3 h-3 text-emerald-400" />
+                        <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-xs font-medium">
+                          <Key className="w-3.5 h-3.5 text-emerald-400" />
                           <span>{p.api_key_masked_hint ?? p.key_hint ?? 'Configured'}</span>
                         </div>
                       ) : (
-                        <span className="text-gray-500 text-[11px] italic">No key</span>
+                        <span className="text-slate-400 text-xs italic">No key</span>
                       )}
                     </td>
 
                     <td className="py-3.5 px-3">
                       <button
                         onClick={() => handleOpenCatalog(p)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-emerald-400 text-[11px] font-medium transition-colors"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-emerald-300 text-xs font-semibold transition-colors"
                       >
-                        <Compass className="w-3 h-3" />
+                        <Compass className="w-3.5 h-3.5" />
                         <span>Catalog ({p.discovered_count || p.models?.length || 1})</span>
                       </button>
                     </td>
 
                     <td className="py-3.5 px-3">
                       {p.last_test_status === 'success' ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-medium" title={p.last_test_at || ''}>
-                          <CheckCircle2 className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 text-emerald-300 text-xs font-semibold" title={p.last_test_at || ''}>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                           <span>OK ({formatTime(p.last_test_at)})</span>
                         </span>
                       ) : p.last_test_status === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 text-red-400 text-[10px] font-medium" title={p.last_test_at || ''}>
-                          <XCircle className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 text-red-300 text-xs font-semibold" title={p.last_test_at || ''}>
+                          <XCircle className="w-3.5 h-3.5 text-red-400" />
                           <span>Failed ({formatTime(p.last_test_at)})</span>
                         </span>
                       ) : (
-                        <span className="text-gray-500 text-[10px]">Never tested</span>
+                        <span className="text-slate-400 text-xs">Never tested</span>
                       )}
                     </td>
 

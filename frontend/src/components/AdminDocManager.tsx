@@ -244,7 +244,7 @@ export default function AdminDocManager() {
               <button
                 type="button"
                 onClick={() => setErrorDetailsDoc(doc)}
-                className="text-[11px] text-red-400 hover:text-red-300 underline font-medium"
+                className="text-xs text-red-400 hover:text-red-300 underline font-semibold"
               >
                 View Error
               </button>
@@ -253,7 +253,7 @@ export default function AdminDocManager() {
         );
       default:
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs text-gray-400 bg-gray-800">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs text-gray-300 bg-gray-800">
             {status}
           </span>
         );
@@ -263,16 +263,16 @@ export default function AdminDocManager() {
   const renderTypeIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'pdf':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">PDF</span>;
+        return <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/15 text-red-300 border border-red-500/30">PDF</span>;
       case 'docx':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/20">DOCX</span>;
+        return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">DOCX</span>;
       case 'md':
       case 'markdown':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/20">MD</span>;
+        return <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">MD</span>;
       case 'url':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">URL</span>;
+        return <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">URL</span>;
       default:
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-500/15 text-gray-400 border border-gray-500/20">TXT</span>;
+        return <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-500/15 text-gray-300 border border-gray-500/30">TXT</span>;
     }
   };
 
@@ -541,7 +541,7 @@ export default function AdminDocManager() {
           ) : (
             <table className="w-full text-left text-xs text-gray-300 border-collapse">
               <thead>
-                <tr className="border-b border-gray-800/80 text-[11px] uppercase tracking-wider text-gray-400 bg-gray-950/40">
+                <tr className="border-b border-gray-800/80 text-xs uppercase tracking-wider text-slate-300 font-semibold bg-gray-950/60">
                   <th className="py-3 px-4 font-semibold">Format</th>
                   <th className="py-3 px-4 font-semibold">Document Name</th>
                   <th className="py-3 px-4 font-semibold">Status</th>
@@ -569,21 +569,21 @@ export default function AdminDocManager() {
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-mono text-gray-300">
+                        <span className="font-mono text-slate-200 text-xs">
                           v{doc.active_version ?? 1}
                           {isPendingVersion && (
-                            <span className="text-[10px] text-indigo-400 ml-1.5 font-sans">
+                            <span className="text-xs text-indigo-300 ml-1.5 font-sans font-medium">
                               (updating v{doc.pending_version})
                             </span>
                           )}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-gray-400">
+                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-300 text-xs">
                         {formatBytes(doc.size_bytes)}
                       </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-gray-400">
+                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-300 text-xs">
                         {formatDate(doc.created_at)}
                       </td>
 
@@ -639,7 +639,7 @@ export default function AdminDocManager() {
             <p className="text-xs text-gray-300 leading-relaxed mb-4">
               Are you sure you want to delete <strong className="text-white">"{docToDelete.name}"</strong>?
             </p>
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-300 mb-6 leading-relaxed">
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-200 mb-6 leading-relaxed font-medium">
               <strong>Phase 1:</strong> Immediately hides this document from search results.
               <br />
               <strong>Phase 2:</strong> Asynchronously purges chunk vectors and files from storage.
@@ -695,7 +695,7 @@ export default function AdminDocManager() {
               <p className="text-xs text-gray-300">
                 Updating <strong className="text-white">"{docToUpdate.name}"</strong> (current version: v{docToUpdate.active_version || 1}).
               </p>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-xs text-slate-300 font-medium">
                 The current version remains searchable until the new version is embedded, ensuring zero search downtime (Blue-Green cutover).
               </p>
 

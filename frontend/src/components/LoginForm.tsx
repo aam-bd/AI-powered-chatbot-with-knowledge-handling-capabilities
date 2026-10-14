@@ -46,7 +46,7 @@ export default function LoginForm() {
             <Shield className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Welcome Back</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-slate-300 font-medium mt-1">
             Sign in to access the Knowledge-Base RAG Chatbot
           </p>
         </div>
@@ -60,11 +60,11 @@ export default function LoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+            <label htmlFor="login-email" className="block text-xs font-semibold uppercase tracking-wider text-slate-200 mb-2">
               Email Address
             </label>
             <div className="relative">
-              <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="login-email"
                 type="email"
@@ -72,17 +72,17 @@ export default function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
                 required
-                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+            <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-slate-200 mb-2">
               Password
             </label>
             <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 id="login-password"
                 type="password"
@@ -90,7 +90,7 @@ export default function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
                 required
-                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="glass-input w-full pl-11 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </div>
@@ -116,11 +116,11 @@ export default function LoginForm() {
         </form>
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-slate-300 font-medium">
             Don&apos;t have an account?{' '}
             <Link
               href="/register"
-              className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
             >
               Sign up
             </Link>

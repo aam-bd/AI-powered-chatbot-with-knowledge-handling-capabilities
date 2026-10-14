@@ -7,6 +7,7 @@ import AdminDocManager from '@/components/AdminDocManager';
 import AdminUsers from '@/components/AdminUsers';
 import AdminLLMManager from '@/components/AdminLLMManager';
 import AdminSystemOverview from '@/components/AdminSystemOverview';
+import AccessibilityTrigger from '@/components/AccessibilityTrigger';
 import {
   Shield,
   ShieldAlert,
@@ -74,7 +75,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Admin Navbar */}
-      <header className="h-16 px-6 border-b border-gray-800 glass-panel sticky top-0 z-30 flex items-center justify-between">
+      <header className="h-16 px-4 sm:px-6 border-b border-gray-800 glass-panel sticky top-0 z-30 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
             <Shield className="w-5 h-5" />
@@ -82,11 +83,11 @@ export default function AdminPage() {
           <div>
             <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
               <span>Admin Management Portal</span>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+              <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
                 Admin
               </span>
             </h1>
-            <p className="text-[11px] text-gray-400">
+            <p className="text-xs text-slate-300 font-medium">
               {activeTab === 'documents'
                 ? 'Knowledge Base Ingestion & Lifecycle'
                 : activeTab === 'users'
@@ -99,13 +100,13 @@ export default function AdminPage() {
         </div>
 
         {/* Center Tab Switcher */}
-        <div className="hidden md:flex items-center gap-1 bg-gray-900/80 p-1 rounded-xl border border-gray-800">
+        <div className="hidden lg:flex items-center gap-1 bg-gray-900/80 p-1 rounded-xl border border-gray-800">
           <button
             onClick={() => setActiveTab('documents')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
               activeTab === 'documents'
                 ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                : 'text-slate-300 hover:text-white hover:bg-gray-800/60'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -116,7 +117,7 @@ export default function AdminPage() {
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
               activeTab === 'users'
                 ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                : 'text-slate-300 hover:text-white hover:bg-gray-800/60'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
@@ -128,7 +129,7 @@ export default function AdminPage() {
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
               activeTab === 'llm'
                 ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                : 'text-slate-300 hover:text-white hover:bg-gray-800/60'
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
@@ -140,7 +141,7 @@ export default function AdminPage() {
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
               activeTab === 'system'
                 ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/20'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                : 'text-slate-300 hover:text-white hover:bg-gray-800/60'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
@@ -148,42 +149,45 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <AccessibilityTrigger variant="navbar" />
+
           <button
             onClick={() => router.push('/')}
-            className="px-3.5 py-2 rounded-xl bg-gray-900/80 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-800 text-xs font-semibold flex items-center gap-2 transition-all shadow-sm"
+            className="px-3 py-1.5 rounded-xl bg-gray-900/80 hover:bg-gray-800 text-slate-200 hover:text-white border border-gray-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Chat</span>
+            <span className="hidden sm:inline">Back to Chat</span>
           </button>
 
-          <div className="h-5 w-px bg-gray-800" />
+          <div className="h-5 w-px bg-gray-800 hidden sm:block" />
 
           <div className="text-right hidden sm:block">
-            <span className="text-xs text-white font-medium block truncate max-w-[180px]">
+            <span className="text-xs text-white font-medium block truncate max-w-[160px]">
               {user.email}
             </span>
-            <span className="text-[10px] text-emerald-400 font-semibold uppercase">Administrator</span>
+            <span className="text-xs text-emerald-400 font-bold uppercase">Admin</span>
           </div>
 
           <button
             onClick={logout}
-            className="p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-2 rounded-xl text-slate-300 hover:text-red-300 hover:bg-red-500/10 transition-colors"
             title="Sign Out"
+            aria-label="Sign Out"
           >
             <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      {/* Mobile Tab Switcher */}
-      <div className="md:hidden flex items-center justify-around border-b border-gray-800 bg-gray-900/50 p-2">
+      {/* Mobile/Tablet Tab Switcher */}
+      <div className="lg:hidden flex items-center overflow-x-auto border-b border-gray-800 bg-gray-900/70 p-2 gap-1.5 scrollbar-thin">
         <button
           onClick={() => setActiveTab('documents')}
-          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
             activeTab === 'documents'
               ? 'bg-emerald-500 text-gray-950 font-bold'
-              : 'text-gray-400 hover:text-white'
+              : 'text-slate-300 hover:text-white'
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
@@ -191,10 +195,10 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
             activeTab === 'users'
               ? 'bg-emerald-500 text-gray-950 font-bold'
-              : 'text-gray-400 hover:text-white'
+              : 'text-slate-300 hover:text-white'
           }`}
         >
           <Users className="w-3.5 h-3.5" />
@@ -202,22 +206,22 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab('llm')}
-          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
             activeTab === 'llm'
               ? 'bg-emerald-500 text-gray-950 font-bold'
-              : 'text-gray-400 hover:text-white'
+              : 'text-slate-300 hover:text-white'
           }`}
         >
           <Cpu className="w-3.5 h-3.5" />
-          <span>LLM</span>
+          <span>LLM Settings</span>
         </button>
         <button
           id="admin-tab-system-mobile"
           onClick={() => setActiveTab('system')}
-          className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
             activeTab === 'system'
               ? 'bg-emerald-500 text-gray-950 font-bold'
-              : 'text-gray-400 hover:text-white'
+              : 'text-slate-300 hover:text-white'
           }`}
         >
           <Activity className="w-3.5 h-3.5" />

@@ -150,11 +150,11 @@ export default function AdminUsers() {
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <Users className="w-5 h-5 text-emerald-400" />
             <span>Registered User Accounts</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
               {users.length} {users.length === 1 ? 'user' : 'users'}
             </span>
           </h2>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-slate-300 font-medium mt-1">
             Manage user roles, grant administrator privileges, and toggle account activation.
           </p>
         </div>
@@ -182,7 +182,7 @@ export default function AdminUsers() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-gray-800 bg-gray-900/50 text-gray-400 font-semibold uppercase tracking-wider text-[10px]">
+                <tr className="border-b border-gray-800 bg-gray-900/60 text-slate-300 font-semibold uppercase tracking-wider text-xs">
                   <th className="py-3.5 px-6">User / Email</th>
                   <th className="py-3.5 px-4">Role</th>
                   <th className="py-3.5 px-4">Status</th>
@@ -209,12 +209,12 @@ export default function AdminUsers() {
                             <div className="font-semibold text-white flex items-center gap-2">
                               <span>{u.email}</span>
                               {isSelf && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
                                   You
                                 </span>
                               )}
                             </div>
-                            <span className="text-[10px] text-gray-500 font-mono block">
+                            <span className="text-xs text-slate-400 font-mono block">
                               ID: {u.id}
                             </span>
                           </div>
@@ -224,13 +224,13 @@ export default function AdminUsers() {
                       {/* Role */}
                       <td className="py-4 px-4">
                         {u.role === 'admin' ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                            <Shield className="w-3 h-3 text-purple-400" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                            <Shield className="w-3.5 h-3.5 text-purple-400" />
                             Admin
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">
-                            <UserCheck className="w-3 h-3 text-blue-400" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                            <UserCheck className="w-3.5 h-3.5 text-blue-400" />
                             User
                           </span>
                         )}
@@ -239,20 +239,20 @@ export default function AdminUsers() {
                       {/* Active Status */}
                       <td className="py-4 px-4">
                         {u.is_active ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
                             Active
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold bg-red-500/10 text-red-300 border border-red-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-red-500/15 text-red-300 border border-red-500/30">
+                            <span className="w-2 h-2 rounded-full bg-red-400" />
                             Inactive
                           </span>
                         )}
                       </td>
 
                       {/* Created At */}
-                      <td className="py-4 px-4 text-gray-400 text-[11px]">
+                      <td className="py-4 px-4 text-slate-300 text-xs font-medium">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3 h-3 text-gray-500 shrink-0" />
                           <span>
@@ -281,7 +281,7 @@ export default function AdminUsers() {
                                 ? 'Demote to standard user'
                                 : 'Promote to administrator'
                             }
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                               isSelf
                                 ? 'opacity-40 cursor-not-allowed bg-gray-900 border-gray-800 text-gray-500'
                                 : u.role === 'admin'
@@ -289,7 +289,7 @@ export default function AdminUsers() {
                                 : 'bg-gray-800/70 hover:bg-gray-700 text-gray-200 border-gray-700'
                             }`}
                           >
-                            <Shield className="w-3 h-3" />
+                            <Shield className="w-3.5 h-3.5" />
                             <span>{u.role === 'admin' ? 'Demote' : 'Make Admin'}</span>
                           </button>
 
@@ -304,7 +304,7 @@ export default function AdminUsers() {
                                 ? 'Deactivate user account'
                                 : 'Activate user account'
                             }
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                               isSelf
                                 ? 'opacity-40 cursor-not-allowed bg-gray-900 border-gray-800 text-gray-500'
                                 : u.is_active
@@ -351,7 +351,7 @@ export default function AdminUsers() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">Confirm Role Change</h3>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-xs text-slate-300 font-medium">
                   {targetRole === 'admin' ? 'Promote to Administrator' : 'Demote to Standard User'}
                 </p>
               </div>
@@ -371,7 +371,7 @@ export default function AdminUsers() {
             </p>
 
             {targetRole === 'user' && (
-              <p className="text-[11px] text-amber-300/80 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
+              <p className="text-xs text-amber-200 font-medium bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
                 This user will immediately lose access to administrator functions and document management.
               </p>
             )}
@@ -427,7 +427,7 @@ export default function AdminUsers() {
                 <h3 className="text-sm font-bold text-white">
                   {targetStatus ? 'Activate User Account' : 'Deactivate User Account'}
                 </h3>
-                <p className="text-[11px] text-gray-400">{statusModalUser.email}</p>
+                <p className="text-xs text-slate-300 font-medium">{statusModalUser.email}</p>
               </div>
             </div>
 
@@ -437,7 +437,7 @@ export default function AdminUsers() {
             </p>
 
             {!targetStatus && (
-              <p className="text-[11px] text-red-300/80 bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+              <p className="text-xs text-red-200 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
                 Deactivation takes effect immediately. The user’s refresh tokens will be revoked and
                 any ongoing sessions will be terminated on their next request.
               </p>

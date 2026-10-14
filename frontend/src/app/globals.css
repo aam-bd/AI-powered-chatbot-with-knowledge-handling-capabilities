@@ -2,50 +2,207 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 243, 244, 246;
-  --background-start-rgb: 11, 15, 23;
-  --background-end-rgb: 17, 24, 39;
+/* ==============================================================================
+   ACCESSIBILITY & SEMANTIC THEME SYSTEM
+   ============================================================================== */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: #0B0F17;
+  --app-bg-gradient: radial-gradient(circle at 50% 0%, #172033 0%, #0B0F17 100%);
+  --app-surface: #111827;
+  --app-surface-elevated: #1F2937;
+  --app-border: rgba(255, 255, 255, 0.12);
+  --app-border-strong: rgba(255, 255, 255, 0.24);
+  --app-text: #F8FAFC;
+  --app-text-muted: #CBD5E1; /* High-contrast secondary text >= 5.5:1 */
+  --app-text-subtle: #94A3B8; /* Secondary labels >= 4.5:1 */
+  --app-accent: #10B981;
+  --app-accent-hover: #059669;
+  --app-accent-text: #022C22;
+  --app-accent-subtle: rgba(16, 185, 129, 0.15);
+  --app-focus-ring: #34D399;
+  --app-input-bg: rgba(17, 24, 39, 0.85);
+  --font-family-active: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+  --app-bg: #F8FAFC;
+  --app-bg-gradient: linear-gradient(180deg, #F1F5F9 0%, #F8FAFC 100%);
+  --app-surface: #FFFFFF;
+  --app-surface-elevated: #F1F5F9;
+  --app-border: #CBD5E1;
+  --app-border-strong: #94A3B8;
+  --app-text: #0F172A; /* Deep readable charcoal >= 14:1 */
+  --app-text-muted: #334155; /* Secondary text >= 7:1 */
+  --app-text-subtle: #475569; /* Small labels >= 5:1 */
+  --app-accent: #059669;
+  --app-accent-hover: #047857;
+  --app-accent-text: #FFFFFF;
+  --app-accent-subtle: rgba(5, 150, 105, 0.12);
+  --app-focus-ring: #059669;
+  --app-input-bg: #FFFFFF;
+}
+
+[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --app-bg: #000000;
+  --app-bg-gradient: #000000;
+  --app-surface: #000000;
+  --app-surface-elevated: #111111;
+  --app-border: #FFFFFF;
+  --app-border-strong: #FFFFFF;
+  --app-text: #FFFFFF; /* Maximum contrast 21:1 */
+  --app-text-muted: #F8FAFC;
+  --app-text-subtle: #F1F5F9;
+  --app-accent: #FACC15; /* High-visibility safety amber */
+  --app-accent-hover: #EAB308;
+  --app-accent-text: #000000;
+  --app-accent-subtle: rgba(250, 204, 21, 0.25);
+  --app-focus-ring: #FACC15;
+  --app-input-bg: #000000;
+}
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --app-bg: #000000;
+  --app-bg-gradient: radial-gradient(circle at 50% 0%, #0D1117 0%, #000000 100%);
+  --app-surface: #0A0D14;
+  --app-surface-elevated: #121824;
+  --app-border: rgba(255, 255, 255, 0.14);
+  --app-border-strong: rgba(255, 255, 255, 0.28);
+  --app-text: #F1F5F9;
+  --app-text-muted: #CBD5E1;
+  --app-text-subtle: #94A3B8;
+  --app-accent: #38BDF8;
+  --app-accent-hover: #0284C7;
+  --app-accent-text: #082F49;
+  --app-accent-subtle: rgba(56, 189, 248, 0.15);
+  --app-focus-ring: #38BDF8;
+  --app-input-bg: #05080E;
+}
+
+/* ==============================================================================
+   ROOT FONT SCALING (rem-proportional)
+   ============================================================================== */
+
+html,
+[data-font-size="normal"] {
+  font-size: 100%; /* 16px */
+}
+
+[data-font-size="medium"] {
+  font-size: 112.5%; /* 18px */
+}
+
+[data-font-size="large"] {
+  font-size: 125%; /* 20px */
+}
+
+[data-font-size="xl"] {
+  font-size: 137.5%; /* 22px */
+}
+
+/* ==============================================================================
+   FONT FAMILY STACKS
+   ============================================================================== */
+
+[data-font-family="sans"] {
+  --font-family-active: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-font-family="serif"] {
+  --font-family-active: "Merriweather", Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+[data-font-family="dyslexic"] {
+  --font-family-active: "Atkinson Hyperlegible", "OpenDyslexic", "Comic Sans MS", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.02em;
+  word-spacing: 0.05em;
+}
+
+[data-font-family="mono"] {
+  --font-family-active: ui-monospace, "Cascadia Code", "JetBrains Mono", "Source Code Pro", Menlo, Monaco, Consolas, monospace;
+}
+
+/* Base Body Styles */
 body {
-  color: rgb(var(--foreground-rgb));
-  background: radial-gradient(circle at 50% 0%, #151D2F 0%, #0B0F17 100%);
+  color: var(--app-text);
+  background: var(--app-bg-gradient);
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-family-active);
   overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Glassmorphism utility classes */
+/* ==============================================================================
+   REDUCED MOTION & FOCUS INDICATORS
+   ============================================================================== */
+
+[data-reduced-motion="true"] *,
+[data-reduced-motion="true"] *::before,
+[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+[data-high-contrast-focus="true"] :focus-visible {
+  outline: 3px solid var(--app-focus-ring) !important;
+  outline-offset: 3px !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ==============================================================================
+   MINIMALIST PANELS & ADAPTIVE GLASSMORPHISM
+   ============================================================================== */
+
 .glass-panel {
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.08);
 }
 
 .glass-panel-elevated {
-  background: rgba(31, 41, 55, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--app-surface-elevated);
+  border: 1px solid var(--app-border-strong);
+  box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.12);
 }
 
 .glass-input {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease-in-out;
+  background: var(--app-input-bg);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .glass-input:focus {
-  border-color: rgba(16, 185, 129, 0.6);
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  border-color: var(--app-focus-ring);
+  box-shadow: 0 0 0 3px var(--app-accent-subtle);
+}
+
+/* Minimum accessible touch target (44x44px) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Subtle modern scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -53,12 +210,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--app-border);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--app-border-strong);
 }
 
 /* Typing cursor animation */
@@ -69,10 +226,10 @@ body {
 
 .typing-cursor {
   display: inline-block;
-  width: 7px;
-  height: 15px;
+  width: 8px;
+  height: 16px;
   margin-left: 2px;
-  background-color: #10B981;
+  background-color: var(--app-accent);
   vertical-align: middle;
   animation: blink 1s infinite;
 }

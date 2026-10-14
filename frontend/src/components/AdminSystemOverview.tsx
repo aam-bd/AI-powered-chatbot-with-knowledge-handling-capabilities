@@ -439,7 +439,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormThreshold(parseFloat(e.target.value) || 0.5)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">Layer 1 cutoff score</span>
+              <span className="text-xs text-slate-400 mt-1 block">Layer 1 cutoff score</span>
             </div>
 
             {/* Retrieval Top K */}
@@ -456,7 +456,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormTopK(parseInt(e.target.value) || 15)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">Candidates from hybrid search</span>
+              <span className="text-xs text-slate-400 mt-1 block">Candidates from hybrid search</span>
             </div>
 
             {/* Rerank Top N */}
@@ -478,11 +478,11 @@ export default function AdminSystemOverview() {
                 } bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500`}
               />
               {formTopN > formTopK ? (
-                <span className="text-[11px] text-rose-500 font-semibold mt-1 block">
+                <span className="text-xs text-rose-500 font-semibold mt-1 block">
                   Rerank Top N cannot exceed Retrieval Top K
                 </span>
               ) : (
-                <span className="text-[11px] text-slate-400 mt-1 block">Context chunks fed to prompt</span>
+                <span className="text-xs text-slate-400 mt-1 block">Context chunks fed to prompt</span>
               )}
             </div>
 
@@ -500,7 +500,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormHistory(parseInt(e.target.value) || 6)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">Sliding context window length</span>
+              <span className="text-xs text-slate-400 mt-1 block">Sliding context window length</span>
             </div>
 
             {/* Rate Limit Per Minute */}
@@ -517,7 +517,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormRateLimit(parseInt(e.target.value) || 60)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">General IP throttle limit</span>
+              <span className="text-xs text-slate-400 mt-1 block">General IP throttle limit</span>
             </div>
 
             {/* Rate Limit Login */}
@@ -534,7 +534,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormRateLimitLogin(parseInt(e.target.value) || 5)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">Anti-bruteforce login throttle</span>
+              <span className="text-xs text-slate-400 mt-1 block">Anti-bruteforce login throttle</span>
             </div>
 
             {/* SSE Keepalive Interval */}
@@ -551,7 +551,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormKeepalive(parseInt(e.target.value) || 15)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">Ping comment heartbeat interval</span>
+              <span className="text-xs text-slate-400 mt-1 block">Ping comment heartbeat interval</span>
             </div>
 
             {/* Max Upload Size */}
@@ -568,7 +568,7 @@ export default function AdminSystemOverview() {
                 onChange={(e) => setFormMaxUploadMB(parseInt(e.target.value) || 20)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="text-[11px] text-slate-400 mt-1 block">1 MB to 50 MB hard cap</span>
+              <span className="text-xs text-slate-400 mt-1 block">1 MB to 50 MB hard cap</span>
             </div>
           </div>
 
@@ -704,7 +704,7 @@ export default function AdminSystemOverview() {
                 Vector Store Synchronization
               </h3>
               {vectorStats && (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
                   {vectorStats.status}
                 </span>
               )}
@@ -716,35 +716,35 @@ export default function AdminSystemOverview() {
             {vectorStats && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Indexed Documents</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Indexed Documents</span>
                   <div className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
                     {vectorStats.indexed_documents_count}
                   </div>
-                  <span className="text-[10px] text-slate-400 block mt-1">PostgreSQL active rows</span>
+                  <span className="text-xs text-slate-400 block mt-1">PostgreSQL active rows</span>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Vector Points</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Vector Points</span>
                   <div className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
                     {vectorStats.points_count}
                   </div>
-                  <span className="text-[10px] text-slate-400 block mt-1">Qdrant chunk vectors</span>
+                  <span className="text-xs text-slate-400 block mt-1">Qdrant chunk vectors</span>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Collection Name</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Collection Name</span>
                   <div className="text-sm font-mono font-bold text-slate-900 dark:text-white mt-1 truncate">
                     {vectorStats.collection_name}
                   </div>
-                  <span className="text-[10px] text-slate-400 block mt-1">{vectorStats.segments_count} segments</span>
+                  <span className="text-xs text-slate-400 block mt-1">{vectorStats.segments_count} segments</span>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Active Document Versions</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Active Document Versions</span>
                   <div className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
                     {vectorStats.active_versions_count}
                   </div>
-                  <span className="text-[10px] text-slate-400 block mt-1">{vectorStats.superseded_versions_count} superseded</span>
+                  <span className="text-xs text-slate-400 block mt-1">{vectorStats.superseded_versions_count} superseded</span>
                 </div>
               </div>
             )}
